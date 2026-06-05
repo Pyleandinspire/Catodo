@@ -80,18 +80,18 @@ class TaskListScreen extends ConsumerWidget {
                       IconButton(
                         onPressed: () => DataIoActions.importIcs(context, ref),
                         icon: const Icon(
-                          Icons.file_upload,
-                          color: Colors.black,
-                        ),
-                        tooltip: '导出',
-                      ),
-                      IconButton(
-                        onPressed: () => DataIoActions.exportIcs(context, ref),
-                        icon: const Icon(
                           Icons.file_download,
                           color: Colors.black,
                         ),
                         tooltip: '导入',
+                      ),
+                      IconButton(
+                        onPressed: () => DataIoActions.exportIcs(context, ref),
+                        icon: const Icon(
+                          Icons.file_upload,
+                          color: Colors.black,
+                        ),
+                        tooltip: '导出',
                       ),
                       IconButton(
                         onPressed: () => _showFilterDialog(context, ref),
