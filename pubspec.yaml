@@ -59,6 +59,15 @@ dependencies:
   # Date/Time Utils
   intl: ^0.19.0
 
+  # Shared Preferences (WebDAV config persistence)
+  shared_preferences: ^2.2.3
+
+  # File Picker (for .ics import)
+  file_picker: ^8.0.3
+
+  # Share (for .ics export)
+  share_plus: ^9.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
