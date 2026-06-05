@@ -76,3 +76,21 @@ final tasksByDayProvider = Provider<Map<String, List<Task>>>((ref) {
     groupedTasks.entries.toList()..sort((a, b) => a.key.compareTo(b.key))
   );
 });
+
+final allGroupsProvider = Provider<List<String>>((ref) {
+  final asyncTasks = ref.watch(activeTasksProvider);
+  
+  return asyncTasks.when(
+    data: (tasks) {
+      final groups = <String>{};
+      for (final task in tasks) {
+        if (task.groupName != null) {
+          groups.add(task.groupName!);
+        }
+      }
+      return groups.toList()..sort();
+    },
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});

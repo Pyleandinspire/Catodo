@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'ui/screens/task_list_screen.dart';
-import 'ui/screens/day_view_screen.dart';
 import 'ui/screens/eisenhower_screen.dart';
+import 'ui/screens/chat_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'services/notification_service.dart';
 import 'providers/isar_provider.dart';
@@ -25,8 +25,8 @@ class _CatodoAppState extends State<CatodoApp> {
 
   static const List<Widget> _screens = [
     TaskListScreen(),
-    DayViewScreen(),
     EisenhowerScreen(),
+    ChatScreen(),
     SettingsScreen(),
   ];
 
@@ -53,24 +53,28 @@ class _CatodoAppState extends State<CatodoApp> {
               bottomNavigationBar: BottomNavigationBar(
                 items: const [
                   BottomNavigationBarItem(
-                    icon: Icon(Icons.list),
-                    label: '待办',
+                    icon: Icon(Icons.list, color: Colors.black),
+                    label: 'to-do',
                   ),
                   BottomNavigationBarItem(
-                    icon: Icon(Icons.calendar_today),
-                    label: '按天',
+                    icon: Icon(Icons.grid_3x3, color: Colors.black),
+                    label: 'priority',
                   ),
                   BottomNavigationBarItem(
-                    icon: Icon(Icons.grid_3x3),
-                    label: '矩阵',
+                    icon: Icon(Icons.message, color: Colors.black),
+                    label: 'chatting',
                   ),
                   BottomNavigationBarItem(
-                    icon: Icon(Icons.settings),
-                    label: '设置',
+                    icon: Icon(Icons.settings, color: Colors.black),
+                    label: 'setting',
                   ),
                 ],
                 currentIndex: _selectedIndex,
                 onTap: _onItemTapped,
+                selectedItemColor: Colors.blue,
+                unselectedItemColor: Colors.black,
+                showUnselectedLabels: true,
+                type: BottomNavigationBarType.fixed,
               ),
             ),
             loading: () => const Scaffold(

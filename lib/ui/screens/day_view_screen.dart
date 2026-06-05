@@ -13,22 +13,39 @@ class DayViewScreen extends ConsumerWidget {
     final tasks = ref.watch(filteredTasksProvider);
 
     Map<DateTime, List<Task>> groupedTasks = {};
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     
     for (final task in tasks) {
       if (task.dueDate != null) {
         final dateKey = DateTime(task.dueDate!.year, task.dueDate!.month, task.dueDate!.day);
         groupedTasks.putIfAbsent(dateKey, () => []).add(task);
       } else {
-        final noDateKey = DateTime(0);
+        final noDateKey = DateTime(9999);
         groupedTasks.putIfAbsent(noDateKey, () => []).add(task);
       }
     }
 
     final sortedDates = groupedTasks.keys.toList()
-      ..sort((a, b) => a.compareTo(b));
+      ..sort((a, b) {
+        if (a.year == 9999) return 1;
+        if (b.year == 9999) return -1;
+        
+        final aIsOverdue = a.isBefore(today);
+        final bIsOverdue = b.isBefore(today);
+        
+        if (aIsOverdue && !bIsOverdue) return -1;
+        if (!aIsOverdue && bIsOverdue) return 1;
+        
+        if (aIsOverdue && bIsOverdue) {
+          return b.compareTo(a);
+        }
+        
+        return a.compareTo(b);
+      });
 
     String _formatDateHeader(DateTime date) {
-      if (date.year == 0) return '无截止日期';
+      if (date.year == 9999) return '无截止日期';
       
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
@@ -46,28 +63,35 @@ class DayViewScreen extends ConsumerWidget {
     }
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
             // 头部区域
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     '按天视图',
                     style: TextStyle(
-                      fontSize: 28,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 8),
                   Text(
                     '${tasks.length} 个任务',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 12,
                       color: Colors.grey[600],
                     ),
                   ),
@@ -150,16 +174,6 @@ class DayViewScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const TaskFormScreen()),
-        ),
-        backgroundColor: Colors.blue,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, size: 28),
       ),
     );
   }

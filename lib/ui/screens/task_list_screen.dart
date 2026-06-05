@@ -5,6 +5,7 @@ import '../../providers/task_providers.dart';
 import '../../models/task.dart';
 import '../../models/filter.dart';
 import 'task_form_screen.dart';
+import 'day_view_screen.dart';
 
 class TaskListScreen extends ConsumerWidget {
   const TaskListScreen({super.key});
@@ -21,51 +22,73 @@ class TaskListScreen extends ConsumerWidget {
           children: [
             // 头部区域
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Catodo',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
+                  // 标题
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Catodo',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            '$pendingCount/$completedCount',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  // 右上角按钮组
                   Row(
                     children: [
-                      Text(
-                        '今日待办',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
+                      IconButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const DayViewScreen()),
                         ),
+                        icon: const Icon(Icons.calendar_today, color: Colors.black),
+                        tooltip: '按天视图',
                       ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(12),
+                      IconButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const TaskFormScreen()),
                         ),
-                        child: Text(
-                          '$pendingCount',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                        icon: const Icon(Icons.add, color: Colors.black),
+                        tooltip: '添加任务',
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '/ $completedCount 已完成',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[500],
-                        ),
+                      IconButton(
+                        onPressed: () => _showImportExportDialog(context),
+                        icon: const Icon(Icons.file_upload, color: Colors.black),
+                        tooltip: '导入',
+                      ),
+                      IconButton(
+                        onPressed: () => _showImportExportDialog(context),
+                        icon: const Icon(Icons.file_download, color: Colors.black),
+                        tooltip: '导出',
+                      ),
+                      IconButton(
+                        onPressed: () => _showFilterDialog(context, ref),
+                        icon: const Icon(Icons.filter_list, color: Colors.black),
+                        tooltip: '筛选',
+                      ),
+                      IconButton(
+                        onPressed: () {},
+                        icon: const Icon(Icons.sync, color: Colors.black),
+                        tooltip: '同步',
                       ),
                     ],
                   ),
@@ -75,43 +98,16 @@ class TaskListScreen extends ConsumerWidget {
 
             // 进度条
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: tasks.isNotEmpty
                   ? LinearProgressIndicator(
                       value: tasks.length > 0 ? completedCount / tasks.length : 0,
                       backgroundColor: Colors.grey[200],
                       color: Colors.green,
                       borderRadius: BorderRadius.circular(8),
-                      minHeight: 6,
+                      minHeight: 4,
                     )
-                  : const SizedBox(height: 6),
-            ),
-
-            const SizedBox(height: 16),
-
-            // 筛选按钮
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showFilterDialog(context, ref),
-                      icon: const Icon(Icons.filter_list, size: 18),
-                      label: const Text('筛选'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey[100],
-                        foregroundColor: Colors.black87,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                  : const SizedBox(height: 4),
             ),
 
             const SizedBox(height: 8),
@@ -167,21 +163,13 @@ class TaskListScreen extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const TaskFormScreen()),
-        ),
-        backgroundColor: Colors.blue,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, size: 28),
-      ),
     );
   }
 
   void _showFilterDialog(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(filterConditionProvider);
+    final allGroups = ref.watch(allGroupsProvider);
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -191,11 +179,14 @@ class TaskListScreen extends ConsumerWidget {
           children: [
             DropdownButtonFormField<String?>(
               value: filter.selectedGroup,
-              items: const [
-                DropdownMenuItem(value: null, child: Text('全部分组')),
-                DropdownMenuItem(value: '工作', child: Text('工作')),
-                DropdownMenuItem(value: '个人', child: Text('个人')),
-                DropdownMenuItem(value: '学习', child: Text('学习')),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('全部分组')),
+                const DropdownMenuItem(value: '工作', child: Text('工作')),
+                const DropdownMenuItem(value: '个人', child: Text('个人')),
+                const DropdownMenuItem(value: '学习', child: Text('学习')),
+                ...allGroups.where((g) => !['工作', '个人', '学习'].contains(g)).map((g) => 
+                  DropdownMenuItem(value: g, child: Text(g))
+                ),
               ],
               onChanged: (value) => ref.read(filterConditionProvider.notifier).state =
                   filter.copyWith(selectedGroup: value),
@@ -229,6 +220,22 @@ class TaskListScreen extends ConsumerWidget {
             },
             child: const Text('重置'),
           ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImportExportDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导入/导出'),
+        content: const Text('此功能将在后续版本中实现'),
+        actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('确定'),

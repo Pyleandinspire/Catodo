@@ -19,12 +19,14 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _customGroupController = TextEditingController();
   int _priority = 0;
   DateTime? _dueDate;
   String? _groupName;
   final _tagsController = TextEditingController();
   bool _isRepeat = false;
   String _repeatType = 'daily';
+  bool _useCustomGroup = false;
 
   @override
   void initState() {
@@ -51,6 +53,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _customGroupController.dispose();
     _tagsController.dispose();
     super.dispose();
   }
@@ -79,13 +82,20 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       }
     }
 
+    String? finalGroupName;
+    if (_useCustomGroup) {
+      finalGroupName = _customGroupController.text.isNotEmpty ? _customGroupController.text : null;
+    } else {
+      finalGroupName = _groupName?.isNotEmpty ?? false ? _groupName : null;
+    }
+
     final newTask = widget.task?.copyWith(
       title: _titleController.text,
       description: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
       priority: _priority,
       dueDate: _dueDate,
       tags: tags,
-      groupName: _groupName?.isNotEmpty ?? false ? _groupName : null,
+      groupName: finalGroupName,
       rrule: rrule,
       isRepeatParent: _isRepeat,
       updatedAt: DateTime.now(),
@@ -95,7 +105,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       priority: _priority,
       dueDate: _dueDate,
       tags: tags,
-      groupName: _groupName?.isNotEmpty ?? false ? _groupName : null,
+      groupName: finalGroupName,
       rrule: rrule,
       isRepeatParent: _isRepeat,
     );
@@ -273,6 +283,36 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                           _groupButton('工作'),
                           _groupButton('个人'),
                           _groupButton('学习'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.add_circle_outline, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _customGroupController,
+                              decoration: InputDecoration(
+                                hintText: '自定义分组名称',
+                                border: InputBorder.none,
+                                enabledBorder: UnderlineInputBorder(
+                                  borderSide: BorderSide(color: Colors.grey[300]!),
+                                ),
+                                focusedBorder: const UnderlineInputBorder(
+                                  borderSide: BorderSide(color: Colors.blue),
+                                ),
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _useCustomGroup = value.isNotEmpty;
+                                  if (value.isNotEmpty) {
+                                    _groupName = null;
+                                  }
+                                });
+                              },
+                            ),
+                          ),
                         ],
                       ),
                     ],
