@@ -20,13 +20,16 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _customGroupController = TextEditingController();
+  final _repeatIntervalController = TextEditingController(text: '1');
   int _priority = 0;
   DateTime? _dueDate;
   String? _groupName;
   final _tagsController = TextEditingController();
   bool _isRepeat = false;
   String _repeatType = 'daily';
+  int _repeatInterval = 1;
   bool _useCustomGroup = false;
+  List<DateTime> _reminderTimes = [];
 
   @override
   void initState() {
@@ -39,6 +42,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       _groupName = widget.task!.groupName;
       _tagsController.text = widget.task!.tags.join(', ');
       _isRepeat = widget.task!.rrule != null && widget.task!.rrule!.isNotEmpty;
+      _reminderTimes = List.from(widget.task!.reminderTimes);
       if (_isRepeat && widget.task!.rrule!.contains('DAILY')) {
         _repeatType = 'daily';
       } else if (_isRepeat && widget.task!.rrule!.contains('WEEKLY')) {
@@ -54,6 +58,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     _titleController.dispose();
     _descriptionController.dispose();
     _customGroupController.dispose();
+    _repeatIntervalController.dispose();
     _tagsController.dispose();
     super.dispose();
   }
@@ -69,16 +74,24 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
 
     String? rrule;
     if (_isRepeat) {
+      String freq;
       switch (_repeatType) {
         case 'daily':
-          rrule = 'FREQ=DAILY';
+          freq = 'FREQ=DAILY';
           break;
         case 'weekly':
-          rrule = 'FREQ=WEEKLY';
+          freq = 'FREQ=WEEKLY';
           break;
         case 'monthly':
-          rrule = 'FREQ=MONTHLY';
+          freq = 'FREQ=MONTHLY';
           break;
+        default:
+          freq = 'FREQ=DAILY';
+      }
+      if (_repeatInterval > 1) {
+        rrule = '$freq;INTERVAL=$_repeatInterval';
+      } else {
+        rrule = freq;
       }
     }
 
@@ -98,6 +111,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       groupName: finalGroupName,
       rrule: rrule,
       isRepeatParent: _isRepeat,
+      reminderTimes: _reminderTimes,
       updatedAt: DateTime.now(),
     ) ?? Task(
       title: _titleController.text,
@@ -108,6 +122,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       groupName: finalGroupName,
       rrule: rrule,
       isRepeatParent: _isRepeat,
+      reminderTimes: _reminderTimes,
     );
 
     final isar = await ref.read(isarProvider.future);
@@ -138,7 +153,38 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     }
   }
 
-  
+  Future<void> _addReminderTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _dueDate ?? DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date != null) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+      );
+      if (time != null) {
+        setState(() {
+          _reminderTimes.add(DateTime(
+            date.year,
+            date.month,
+            date.day,
+            time.hour,
+            time.minute,
+          ));
+          _reminderTimes.sort();
+        });
+      }
+    }
+  }
+
+  void _removeReminderTime(DateTime time) {
+    setState(() {
+      _reminderTimes.remove(time);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -223,6 +269,72 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                         const Icon(Icons.arrow_forward_ios, color: Color(0xFFBDBDBD)),
                       ],
                     ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // 提醒时间设置
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            '提醒时间',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: _addReminderTime,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              elevation: 0,
+                            ),
+                            child: const Text('添加提醒'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (_reminderTimes.isEmpty)
+                        const Text(
+                          '暂无提醒时间',
+                          style: TextStyle(color: Colors.grey),
+                        )
+                      else
+                        Column(
+                          children: _reminderTimes.map((time) {
+                            return Row(
+                              children: [
+                                const Icon(Icons.alarm, color: Colors.blue),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${time.month}/${time.day} ${time.hour}:${time.minute.toString().padLeft(2, '0')}',
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                  onPressed: () => _removeReminderTime(time),
+                                ),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -366,6 +478,45 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                             _repeatButton('daily', '每天'),
                             _repeatButton('weekly', '每周'),
                             _repeatButton('monthly', '每月'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Text(
+                              '间隔:',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 80,
+                              child: TextField(
+                                controller: _repeatIntervalController,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  hintText: '1',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                ),
+                                textAlign: TextAlign.center,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _repeatInterval = int.tryParse(value) ?? 1;
+                                    if (_repeatInterval < 1) _repeatInterval = 1;
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _repeatType == 'daily' ? '天' : _repeatType == 'weekly' ? '周' : '月',
+                              style: const TextStyle(fontSize: 14),
+                            ),
                           ],
                         ),
                       ],

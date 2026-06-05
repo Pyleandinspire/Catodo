@@ -6,6 +6,8 @@ import 'ui/screens/chat_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'services/notification_service.dart';
 import 'providers/isar_provider.dart';
+import 'data/task_dao.dart';
+import 'models/task.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,6 +38,19 @@ class _CatodoAppState extends State<CatodoApp> {
     });
   }
 
+  void _rescheduleReminders(dynamic isar) async {
+    try {
+      final dao = TaskDao(isar);
+      final tasks = await dao.getAllTasks();
+      final tasksWithReminders = tasks.where((task) => 
+        !task.isCompleted && task.reminderTimes.isNotEmpty
+      ).toList();
+      await NotificationService().rescheduleAllReminders(tasksWithReminders);
+    } catch (e) {
+      print('Failed to reschedule reminders: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -48,9 +63,11 @@ class _CatodoAppState extends State<CatodoApp> {
         builder: (context, ref, child) {
           final isarAsync = ref.watch(isarProvider);
           return isarAsync.when(
-            data: (_) => Scaffold(
-              body: _screens[_selectedIndex],
-              bottomNavigationBar: BottomNavigationBar(
+            data: (isar) {
+              _rescheduleReminders(isar);
+              return Scaffold(
+                body: _screens[_selectedIndex],
+                bottomNavigationBar: BottomNavigationBar(
                 items: const [
                   BottomNavigationBarItem(
                     icon: Icon(Icons.list, color: Colors.black),
@@ -76,7 +93,8 @@ class _CatodoAppState extends State<CatodoApp> {
                 showUnselectedLabels: true,
                 type: BottomNavigationBarType.fixed,
               ),
-            ),
+            );
+            },
             loading: () => const Scaffold(
               body: Center(
                 child: Column(

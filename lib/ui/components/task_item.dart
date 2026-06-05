@@ -64,13 +64,15 @@ class TaskItem extends ConsumerWidget {
     final isar = await ref.watch(isarProvider.future);
     final dao = TaskDao(isar);
 
-    if (task.isRepeatParent && RepeatTaskService.isRepeatTask(task)) {
+    if (task.isRepeatParent && !task.isCompleted) {
       await dao.updateTask(task.copyWith(isCompleted: true));
 
       try {
-        final nextTask = RepeatTaskService.createNextTask(task);
-        await dao.insertTask(nextTask);
-        await NotificationService().scheduleTaskReminder(nextTask);
+        final nextTask = RepeatTaskService().generateNextRepeatTask(task);
+        if (nextTask != null) {
+          await dao.insertTask(nextTask);
+          await NotificationService().scheduleTaskReminder(nextTask);
+        }
       } catch (e) {
         print('Failed to create next task: $e');
       }

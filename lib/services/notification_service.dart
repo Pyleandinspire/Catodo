@@ -72,4 +72,13 @@ class NotificationService {
       ),
     );
   }
+
+  Future<void> rescheduleAllReminders(List<Task> tasks) async {
+    for (var task in tasks) {
+      if (task.isCompleted) continue;
+      if (task.reminderTimes.isEmpty) continue;
+      
+      await scheduleTaskReminder(task);
+    }
+  }
 }
