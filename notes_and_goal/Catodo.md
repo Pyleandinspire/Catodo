@@ -27,3 +27,8 @@
 ![Pasted image 20260605155454](Pasted%20image%2020260605155454.png)
 ![Pasted image 20260605155516](Pasted%20image%2020260605155516.png)
 ![Pasted image 20260605155528](Pasted%20image%2020260605155528.png)
+
+这个作为应用图标
+![Icon](../assets/Icon.png)
+这个作为应用开场图片
+![Splash](../assets/splash.png)
