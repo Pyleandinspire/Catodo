@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/task.dart';
 import '../../data/task_dao.dart';
 import '../../providers/isar_provider.dart';
+import '../../providers/task_providers.dart';
 import '../../services/notification_service.dart';
-
 
 class TaskFormScreen extends ConsumerStatefulWidget {
   final Task? task;
@@ -97,33 +97,41 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
 
     String? finalGroupName;
     if (_useCustomGroup) {
-      finalGroupName = _customGroupController.text.isNotEmpty ? _customGroupController.text : null;
+      finalGroupName = _customGroupController.text.isNotEmpty
+          ? _customGroupController.text
+          : null;
     } else {
       finalGroupName = _groupName?.isNotEmpty ?? false ? _groupName : null;
     }
 
-    final newTask = widget.task?.copyWith(
-      title: _titleController.text,
-      description: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
-      priority: _priority,
-      dueDate: _dueDate,
-      tags: tags,
-      groupName: finalGroupName,
-      rrule: rrule,
-      isRepeatParent: _isRepeat,
-      reminderTimes: _reminderTimes,
-      updatedAt: DateTime.now(),
-    ) ?? Task(
-      title: _titleController.text,
-      description: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
-      priority: _priority,
-      dueDate: _dueDate,
-      tags: tags,
-      groupName: finalGroupName,
-      rrule: rrule,
-      isRepeatParent: _isRepeat,
-      reminderTimes: _reminderTimes,
-    );
+    final newTask =
+        widget.task?.copyWith(
+          title: _titleController.text,
+          description: _descriptionController.text.isNotEmpty
+              ? _descriptionController.text
+              : null,
+          priority: _priority,
+          dueDate: _dueDate,
+          tags: tags,
+          groupName: finalGroupName,
+          rrule: rrule,
+          isRepeatParent: _isRepeat,
+          reminderTimes: _reminderTimes,
+          updatedAt: DateTime.now(),
+        ) ??
+        Task(
+          title: _titleController.text,
+          description: _descriptionController.text.isNotEmpty
+              ? _descriptionController.text
+              : null,
+          priority: _priority,
+          dueDate: _dueDate,
+          tags: tags,
+          groupName: finalGroupName,
+          rrule: rrule,
+          isRepeatParent: _isRepeat,
+          reminderTimes: _reminderTimes,
+        );
 
     final isar = await ref.read(isarProvider.future);
     final dao = TaskDao(isar);
@@ -167,13 +175,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       );
       if (time != null) {
         setState(() {
-          _reminderTimes.add(DateTime(
-            date.year,
-            date.month,
-            date.day,
-            time.hour,
-            time.minute,
-          ));
+          _reminderTimes.add(
+            DateTime(date.year, date.month, date.day, time.hour, time.minute),
+          );
           _reminderTimes.sort();
         });
       }
@@ -191,12 +195,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.task != null ? '编辑任务' : '新建任务'),
-        actions: [
-          TextButton(
-            onPressed: _submitForm,
-            child: const Text('保存'),
-          ),
-        ],
+        actions: [TextButton(onPressed: _submitForm, child: const Text('保存'))],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -210,7 +209,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                 decoration: InputDecoration(
                   labelText: '任务标题',
                   hintText: '输入任务标题',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   suffixIcon: _titleController.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.lightbulb),
@@ -236,7 +237,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                 decoration: InputDecoration(
                   labelText: '任务描述',
                   hintText: '输入任务描述（可选）',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 maxLines: 3,
               ),
@@ -246,7 +249,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               // 截止日期
               Card(
                 elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: InkWell(
                   onTap: _selectDate,
                   child: Padding(
@@ -262,11 +267,16 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                                 : '选择截止日期',
                             style: TextStyle(
                               fontSize: 16,
-                              color: _dueDate != null ? Colors.black87 : Colors.grey[500],
+                              color: _dueDate != null
+                                  ? Colors.black87
+                                  : Colors.grey[500],
                             ),
                           ),
                         ),
-                        const Icon(Icons.arrow_forward_ios, color: Color(0xFFBDBDBD)),
+                        const Icon(
+                          Icons.arrow_forward_ios,
+                          color: Color(0xFFBDBDBD),
+                        ),
                       ],
                     ),
                   ),
@@ -278,7 +288,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               // 提醒时间设置
               Card(
                 elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -299,8 +311,13 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.blue,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                               elevation: 0,
                             ),
                             child: const Text('添加提醒'),
@@ -327,7 +344,10 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                  icon: const Icon(
+                                    Icons.remove_circle,
+                                    color: Colors.red,
+                                  ),
                                   onPressed: () => _removeReminderTime(time),
                                 ),
                               ],
@@ -344,7 +364,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               // 优先级选择
               Card(
                 elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -376,7 +398,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               // 分组选择
               Card(
                 elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -400,7 +424,10 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          const Icon(Icons.add_circle_outline, color: Colors.grey),
+                          const Icon(
+                            Icons.add_circle_outline,
+                            color: Colors.grey,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
@@ -409,7 +436,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                                 hintText: '自定义分组名称',
                                 border: InputBorder.none,
                                 enabledBorder: UnderlineInputBorder(
-                                  borderSide: BorderSide(color: Colors.grey[300]!),
+                                  borderSide: BorderSide(
+                                    color: Colors.grey[300]!,
+                                  ),
                                 ),
                                 focusedBorder: const UnderlineInputBorder(
                                   borderSide: BorderSide(color: Colors.blue),
@@ -440,8 +469,59 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                 decoration: InputDecoration(
                   labelText: '标签',
                   hintText: '多个标签用逗号分隔',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 8),
+              Consumer(
+                builder: (context, ref, _) {
+                  final allTags = ref.watch(allTagsProvider);
+                  if (allTags.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  final currentTags = _currentTagsFromController();
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '已有标签（点击添加）',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: allTags.map((tag) {
+                            final selected = currentTags.contains(tag);
+                            return FilterChip(
+                              label: Text(tag),
+                              selected: selected,
+                              onSelected: (sel) {
+                                setState(() {
+                                  final tags = _currentTagsFromController();
+                                  if (sel) {
+                                    if (!tags.contains(tag)) tags.add(tag);
+                                  } else {
+                                    tags.remove(tag);
+                                  }
+                                  _tagsController.text = tags.join(', ');
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 16),
@@ -449,7 +529,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               // 重复任务
               Card(
                 elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -467,7 +549,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                           const SizedBox(width: 16),
                           Switch(
                             value: _isRepeat,
-                            onChanged: (value) => setState(() => _isRepeat = value),
+                            onChanged: (value) =>
+                                setState(() => _isRepeat = value),
                           ),
                         ],
                       ),
@@ -483,10 +566,7 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            const Text(
-                              '间隔:',
-                              style: TextStyle(fontSize: 14),
-                            ),
+                            const Text('间隔:', style: TextStyle(fontSize: 14)),
                             const SizedBox(width: 8),
                             SizedBox(
                               width: 80,
@@ -507,14 +587,19 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                                 onChanged: (value) {
                                   setState(() {
                                     _repeatInterval = int.tryParse(value) ?? 1;
-                                    if (_repeatInterval < 1) _repeatInterval = 1;
+                                    if (_repeatInterval < 1)
+                                      _repeatInterval = 1;
                                   });
                                 },
                               ),
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              _repeatType == 'daily' ? '天' : _repeatType == 'weekly' ? '周' : '月',
+                              _repeatType == 'daily'
+                                  ? '天'
+                                  : _repeatType == 'weekly'
+                                  ? '周'
+                                  : '月',
                               style: const TextStyle(fontSize: 14),
                             ),
                           ],
@@ -541,9 +626,13 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
             backgroundColor: _priority == priority
                 ? _getPriorityColor(priority)
                 : Colors.grey[100],
-            foregroundColor: _priority == priority ? Colors.white : Colors.black87,
+            foregroundColor: _priority == priority
+                ? Colors.white
+                : Colors.black87,
             padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
             elevation: 0,
           ),
           child: Text(label),
@@ -556,12 +645,15 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: ElevatedButton(
-        onPressed: () => setState(() => _groupName = _groupName == group ? null : group),
+        onPressed: () =>
+            setState(() => _groupName = _groupName == group ? null : group),
         style: ElevatedButton.styleFrom(
           backgroundColor: _groupName == group ? Colors.blue : Colors.grey[100],
           foregroundColor: _groupName == group ? Colors.white : Colors.black87,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           elevation: 0,
         ),
         child: Text(group),
@@ -578,7 +670,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           backgroundColor: _repeatType == type ? Colors.blue : Colors.grey[100],
           foregroundColor: _repeatType == type ? Colors.white : Colors.black87,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           elevation: 0,
         ),
         child: Text(label),
@@ -597,5 +691,13 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       default:
         return Colors.grey[400]!;
     }
+  }
+
+  List<String> _currentTagsFromController() {
+    return _tagsController.text
+        .split(',')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
   }
 }

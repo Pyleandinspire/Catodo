@@ -229,14 +229,32 @@ class TaskItem extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 6),
                         child: Wrap(
                           spacing: 6,
-                          children: task.tags.take(3).map((tag) => Chip(
-                            label: Text(
-                              tag,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            backgroundColor: Colors.grey[100],
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          )).toList(),
+                          runSpacing: 4,
+                          children: [
+                            ...task.tags.take(3).map((tag) => Chip(
+                                  label: Text(
+                                    tag,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  backgroundColor: Colors.grey[100],
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                )),
+                            if (task.tags.length > 3)
+                              Chip(
+                                label: Text(
+                                  '+${task.tags.length - 3}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                backgroundColor: Colors.grey[200],
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                          ],
                         ),
                       ),
                   ],

@@ -1,17 +1,18 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../providers/isar_provider.dart';
 import '../../data/task_dao.dart';
-import '../../models/task.dart';
+import '../../services/ics_service.dart';
 
-class DataManagementScreen extends ConsumerWidget {
-  const DataManagementScreen({super.key});
+/// 数据导入/导出公共逻辑（提供给页面与按钮共用）。
+class DataIoActions {
+  DataIoActions._();
 
-  Future<void> _importIcs(BuildContext context, WidgetRef ref) async {
+  /// 通过系统对话框选择 .ics 文件并导入。
+  static Future<void> importIcs(BuildContext context, WidgetRef ref) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -20,22 +21,24 @@ class DataManagementScreen extends ConsumerWidget {
 
       if (result == null || result.files.isEmpty) return;
 
-      final file = File(result.files.single.path!);
-      final content = await file.readAsString();
-      final tasks = _parseIcs(content);
+      final path = result.files.single.path;
+      if (path == null) return;
 
-      final isarAsync = ref.read(isarProvider);
-      isarAsync.whenData((isar) async {
-        final dao = TaskDao(isar);
-        for (final task in tasks) {
-          await dao.insertTask(task);
-        }
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('成功导入 ${tasks.length} 个任务')));
-        }
-      });
+      final file = File(path);
+      final content = await file.readAsString();
+      final tasks = IcsService.parseIcs(content);
+
+      final isar = await ref.read(isarProvider.future);
+      final dao = TaskDao(isar);
+      for (final task in tasks) {
+        await dao.insertTask(task);
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('成功导入 ${tasks.length} 个任务')));
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -45,78 +48,11 @@ class DataManagementScreen extends ConsumerWidget {
     }
   }
 
-  List<Task> _parseIcs(String content) {
-    final tasks = <Task>[];
-    final lines = content.split('\n');
-    String? title;
-    DateTime? dueDate;
-    String? description;
-    bool inVevent = false;
-
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed == 'BEGIN:VEVENT') {
-        inVevent = true;
-        title = null;
-        dueDate = null;
-        description = null;
-      } else if (trimmed == 'END:VEVENT') {
-        if (inVevent && title != null && title.isNotEmpty) {
-          tasks.add(
-            Task(title: title, dueDate: dueDate, description: description),
-          );
-        }
-        inVevent = false;
-      } else if (inVevent) {
-        if (trimmed.startsWith('SUMMARY:')) {
-          title = _unescapeIcs(trimmed.substring(8));
-        } else if (trimmed.startsWith('DTSTART')) {
-          dueDate = _parseIcsDate(trimmed);
-        } else if (trimmed.startsWith('DTEND')) {
-          dueDate ??= _parseIcsDate(trimmed);
-        } else if (trimmed.startsWith('DESCRIPTION:')) {
-          description = _unescapeIcs(trimmed.substring(12));
-        }
-      }
-    }
-    return tasks;
-  }
-
-  String _unescapeIcs(String s) {
-    return s
-        .replaceAll('\\n', '\n')
-        .replaceAll('\\,', ',')
-        .replaceAll('\\\\', '\\');
-  }
-
-  DateTime? _parseIcsDate(String line) {
+  /// 让用户选择保存位置，将所有活动任务导出为 .ics 文件。
+  static Future<void> exportIcs(BuildContext context, WidgetRef ref) async {
     try {
-      final parts = line.split(':');
-      if (parts.length < 2) return null;
-      final dateStr = parts[1].trim();
-      // 格式: 20240101T120000Z
-      final year = int.parse(dateStr.substring(0, 4));
-      final month = int.parse(dateStr.substring(4, 6));
-      final day = int.parse(dateStr.substring(6, 8));
-      if (dateStr.length >= 15) {
-        final hour = int.parse(dateStr.substring(9, 11));
-        final minute = int.parse(dateStr.substring(11, 13));
-        final second = int.parse(dateStr.substring(13, 15));
-        return DateTime.utc(year, month, day, hour, minute, second);
-      }
-      return DateTime.utc(year, month, day);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _exportIcs(BuildContext context, WidgetRef ref) async {
-    try {
-      final isarAsync = ref.read(isarProvider);
-      final isar = isarAsync.valueOrNull;
-      final tasks = isar != null
-          ? await TaskDao(isar).getAllActiveTasks()
-          : <Task>[];
+      final isar = await ref.read(isarProvider.future);
+      final tasks = await TaskDao(isar).getAllActiveTasks();
 
       if (tasks.isEmpty) {
         if (context.mounted) {
@@ -127,12 +63,45 @@ class DataManagementScreen extends ConsumerWidget {
         return;
       }
 
-      final icsContent = _generateIcs(tasks);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/catodo_export.ics');
-      await file.writeAsString(icsContent);
+      final icsContent = IcsService.generateIcs(tasks);
+      final fileName =
+          'catodo_export_${DateTime.now().millisecondsSinceEpoch}.ics';
+      final bytes = Uint8List.fromList(icsContent.codeUnits);
 
-      await Share.shareXFiles([XFile(file.path)], subject: 'Catodo 任务导出');
+      // 优先使用 saveFile（移动端会弹出系统保存对话框）
+      String? savedPath;
+      try {
+        savedPath = await FilePicker.platform.saveFile(
+          dialogTitle: '选择导出位置',
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: ['ics'],
+          bytes: bytes,
+        );
+      } catch (_) {
+        savedPath = null;
+      }
+
+      if (savedPath == null) {
+        final dirPath = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: '选择导出文件夹',
+        );
+        if (dirPath == null) return; // 用户取消
+        final file = File('$dirPath${Platform.pathSeparator}$fileName');
+        await file.writeAsString(icsContent);
+        savedPath = file.path;
+      } else {
+        final saved = File(savedPath);
+        if (!await saved.exists() || await saved.length() == 0) {
+          await saved.writeAsString(icsContent);
+        }
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导出成功: $savedPath')));
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -141,50 +110,10 @@ class DataManagementScreen extends ConsumerWidget {
       }
     }
   }
+}
 
-  String _generateIcs(List<Task> tasks) {
-    final buffer = StringBuffer();
-    buffer.writeln('BEGIN:VCALENDAR');
-    buffer.writeln('VERSION:2.0');
-    buffer.writeln('PRODID:-//Catodo//Catodo App//EN');
-
-    for (final task in tasks) {
-      buffer.writeln('BEGIN:VEVENT');
-      buffer.writeln('UID:catodo-${task.id}');
-      buffer.writeln('SUMMARY:${_escapeIcs(task.title)}');
-      if (task.description != null && task.description!.isNotEmpty) {
-        buffer.writeln('DESCRIPTION:${_escapeIcs(task.description!)}');
-      }
-      if (task.dueDate != null) {
-        final dateStr = _formatIcsDate(task.dueDate!);
-        buffer.writeln('DTSTART:$dateStr');
-        buffer.writeln('DTEND:$dateStr');
-      }
-      buffer.writeln('PRIORITY:${task.priority + 1}');
-      buffer.writeln(
-        'STATUS:${task.isCompleted ? 'COMPLETED' : 'NEEDS-ACTION'}',
-      );
-      if (task.tags.isNotEmpty) {
-        buffer.writeln('CATEGORIES:${task.tags.join(',')}');
-      }
-      buffer.writeln('END:VEVENT');
-    }
-
-    buffer.writeln('END:VCALENDAR');
-    return buffer.toString();
-  }
-
-  String _escapeIcs(String s) {
-    return s
-        .replaceAll('\\', '\\\\')
-        .replaceAll(',', '\\,')
-        .replaceAll('\n', '\\n');
-  }
-
-  String _formatIcsDate(DateTime dt) {
-    return '${dt.year}${dt.month.toString().padLeft(2, '0')}${dt.day.toString().padLeft(2, '0')}'
-        'T${dt.hour.toString().padLeft(2, '0')}${dt.minute.toString().padLeft(2, '0')}${dt.second.toString().padLeft(2, '0')}';
-  }
+class DataManagementScreen extends ConsumerWidget {
+  const DataManagementScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -230,7 +159,7 @@ class DataManagementScreen extends ConsumerWidget {
                 Icons.arrow_forward_ios,
                 color: Color(0xFFBDBDBD),
               ),
-              onTap: () => _importIcs(context, ref),
+              onTap: () => DataIoActions.importIcs(context, ref),
             ),
           ),
           const SizedBox(height: 16),
@@ -261,12 +190,12 @@ class DataManagementScreen extends ConsumerWidget {
                 child: const Icon(Icons.file_upload, color: Colors.green),
               ),
               title: const Text('导出 .ics 文件'),
-              subtitle: const Text('将所有任务导出为日历格式'),
+              subtitle: const Text('保存所有任务到所选文件夹'),
               trailing: const Icon(
                 Icons.arrow_forward_ios,
                 color: Color(0xFFBDBDBD),
               ),
-              onTap: () => _exportIcs(context, ref),
+              onTap: () => DataIoActions.exportIcs(context, ref),
             ),
           ),
         ],

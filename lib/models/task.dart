@@ -45,7 +45,8 @@ class Task {
     this.rrule,
     this.isRepeatParent = false,
     List<DateTime> reminderTimes = const [],
-  })  : reminderTimes = List.from(reminderTimes) {
+  })  : tags = List.from(tags),
+        reminderTimes = List.from(reminderTimes) {
     this.createdAt = DateTime.now();
     this.updatedAt = DateTime.now();
     this.isDeleted = false;

@@ -94,3 +94,21 @@ final allGroupsProvider = Provider<List<String>>((ref) {
     error: (_, __) => [],
   );
 });
+
+final allTagsProvider = Provider<List<String>>((ref) {
+  final asyncTasks = ref.watch(activeTasksProvider);
+
+  return asyncTasks.when(
+    data: (tasks) {
+      final tags = <String>{};
+      for (final task in tasks) {
+        for (final tag in task.tags) {
+          if (tag.isNotEmpty) tags.add(tag);
+        }
+      }
+      return tags.toList()..sort();
+    },
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
