@@ -17,3 +17,10 @@
 
 # Keep annotations
 -keepattributes *Annotation*
+
+# Fix: Missing class com.google.android.play.core (Play Store Deferred Components)
+# Catodo doesn't use Play Store dynamic delivery, so we can safely ignore these
+-dontwarn com.google.android.play.core.**
+-dontwarn com.google.android.play.core.splitcompat.**
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**

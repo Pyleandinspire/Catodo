@@ -570,60 +570,62 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SizedBox(
-        height: 400,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                '选择要$actionType的任务',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+      builder: (context) => LayoutBuilder(
+        builder: (context, constraints) => SizedBox(
+          height: constraints.maxHeight * 0.7,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  '选择要$actionType的任务',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: tasks.length,
-                itemBuilder: (_, i) => ListTile(
-                  title: Text(tasks[i].title),
-                  subtitle: Text(
-                    tasks[i].dueDate != null
-                        ? '截止: ${tasks[i].dueDate!.toLocal().toString().split('.')[0]}'
-                        : '无截止日期',
+              Expanded(
+                child: ListView.builder(
+                  itemCount: tasks.length,
+                  itemBuilder: (_, i) => ListTile(
+                    title: Text(tasks[i].title),
+                    subtitle: Text(
+                      tasks[i].dueDate != null
+                          ? '截止: ${tasks[i].dueDate!.toLocal().toString().split('.')[0]}'
+                          : '无截止日期',
+                    ),
+                    leading: Icon(
+                      tasks[i].priority >= 2 ? Icons.flag : Icons.outlined_flag,
+                      color: tasks[i].priority >= 2 ? Colors.red : Colors.grey,
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      String message;
+                      switch (actionType) {
+                        case '分解':
+                          message = '分解任务「${tasks[i].title}」';
+                          break;
+                        case '调整优先级':
+                          message = '调整任务「${tasks[i].title}」的优先级';
+                          break;
+                        case '加标签':
+                          message = '给任务「${tasks[i].title}」加标签和分组';
+                          break;
+                        case '完成':
+                          message = '完成任务「${tasks[i].title}」';
+                          break;
+                        default:
+                          message = '帮我管理任务「${tasks[i].title}」';
+                      }
+                      _messageController.text = message;
+                      _sendMessage();
+                    },
                   ),
-                  leading: Icon(
-                    tasks[i].priority >= 2 ? Icons.flag : Icons.outlined_flag,
-                    color: tasks[i].priority >= 2 ? Colors.red : Colors.grey,
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    String message;
-                    switch (actionType) {
-                      case '分解':
-                        message = '分解任务「${tasks[i].title}」';
-                        break;
-                      case '调整优先级':
-                        message = '调整任务「${tasks[i].title}」的优先级';
-                        break;
-                      case '加标签':
-                        message = '给任务「${tasks[i].title}」加标签和分组';
-                        break;
-                      case '完成':
-                        message = '完成任务「${tasks[i].title}」';
-                        break;
-                      default:
-                        message = '帮我管理任务「${tasks[i].title}」';
-                    }
-                    _messageController.text = message;
-                    _sendMessage();
-                  },
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
