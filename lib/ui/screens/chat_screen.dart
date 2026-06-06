@@ -40,16 +40,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _initAIService() async {
     final prefs = await SharedPreferences.getInstance();
     final apiKey = prefs.getString('ai_api_key') ?? '';
-    final baseUrl = prefs.getString('ai_base_url') ?? '';
+    final apiUrl = prefs.getString('ai_api_url') ?? '';
     final model = prefs.getString('ai_model') ?? '';
     final providerId = prefs.getString('ai_provider_id') ?? 'custom';
 
-    if (apiKey.isNotEmpty && baseUrl.isNotEmpty && model.isNotEmpty) {
+    if (apiKey.isNotEmpty && apiUrl.isNotEmpty && model.isNotEmpty) {
       _aiService = AIService(
         AIConfig(
           providerId: providerId,
           apiKey: apiKey,
-          baseUrl: baseUrl,
+          apiUrl: apiUrl,
           modelName: model,
         ),
       );

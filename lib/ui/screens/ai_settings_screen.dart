@@ -13,11 +13,14 @@ class AISettingsScreen extends ConsumerStatefulWidget {
 
 class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   final _apiKeyController = TextEditingController();
-  final _baseUrlController = TextEditingController();
+  final _apiUrlController = TextEditingController();
   final _modelController = TextEditingController();
   String _selectedProviderId = 'custom';
   bool _isCustomProvider = true;
   bool _isTesting = false;
+  bool _isFetchingModels = false;
+  bool _fetchModelsFailed = false;
+  List<String> _fetchedModels = [];
 
   @override
   void initState() {
@@ -29,7 +32,7 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     _selectedProviderId = prefs.getString('ai_provider_id') ?? 'custom';
     _apiKeyController.text = prefs.getString('ai_api_key') ?? '';
-    _baseUrlController.text = prefs.getString('ai_base_url') ?? '';
+    _apiUrlController.text = prefs.getString('ai_api_url') ?? '';
     _modelController.text = prefs.getString('ai_model') ?? '';
 
     _isCustomProvider = _selectedProviderId == 'custom';
@@ -37,8 +40,8 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
     // 如果是预设提供商，自动填入默认值
     if (!_isCustomProvider) {
       final provider = LLMProviderRegistry.getById(_selectedProviderId);
-      if (_baseUrlController.text.isEmpty) {
-        _baseUrlController.text = provider.baseUrl;
+      if (_apiUrlController.text.isEmpty) {
+        _apiUrlController.text = provider.apiUrl;
       }
       if (_modelController.text.isEmpty) {
         _modelController.text = provider.defaultModel;
@@ -53,20 +56,45 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
     setState(() {
       _selectedProviderId = providerId;
       _isCustomProvider = providerId == 'custom';
+      _fetchedModels = [];
+      _fetchModelsFailed = false;
     });
 
     if (providerId != 'custom') {
       final provider = LLMProviderRegistry.getById(providerId);
-      _baseUrlController.text = provider.baseUrl;
+      _apiUrlController.text = provider.apiUrl;
       _modelController.text = provider.defaultModel;
     }
+  }
+
+  Future<void> _fetchModels() async {
+    setState(() {
+      _isFetchingModels = true;
+      _fetchModelsFailed = false;
+    });
+
+    final config = AIConfig(
+      providerId: _selectedProviderId,
+      apiKey: _apiKeyController.text.trim(),
+      apiUrl: _apiUrlController.text.trim(),
+      modelName: _modelController.text.trim(),
+    );
+
+    final service = AIService(config);
+    final models = await service.fetchModels();
+
+    setState(() {
+      _isFetchingModels = false;
+      _fetchedModels = models;
+      _fetchModelsFailed = models.isEmpty;
+    });
   }
 
   Future<void> _saveConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('ai_provider_id', _selectedProviderId);
     await prefs.setString('ai_api_key', _apiKeyController.text.trim());
-    await prefs.setString('ai_base_url', _baseUrlController.text.trim());
+    await prefs.setString('ai_api_url', _apiUrlController.text.trim());
     await prefs.setString('ai_model', _modelController.text.trim());
 
     if (mounted) {
@@ -85,33 +113,49 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
     final config = AIConfig(
       providerId: _selectedProviderId,
       apiKey: _apiKeyController.text.trim(),
-      baseUrl: _baseUrlController.text.trim(),
+      apiUrl: _apiUrlController.text.trim(),
       modelName: _modelController.text.trim(),
     );
 
     final service = AIService(config);
-    final result = await service.requestStructuredOutput(
-      systemPrompt: '你是一个测试助手。',
-      userPrompt: '请回复 {"status": "ok"}',
-    );
+    final result = await service.testConnection();
 
     setState(() => _isTesting = false);
 
     if (mounted) {
-      final success = result != null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? '连接成功' : '连接失败，请检查配置'),
-          backgroundColor: success ? Colors.green : Colors.red,
-        ),
-      );
+      _showTestResultDialog(result);
     }
+  }
+
+  void _showTestResultDialog(ConnectionTestResult result) {
+    final color = result.success ? Colors.green : Colors.red;
+    final icon = result.success ? Icons.check_circle : Icons.error;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(icon, color: color, size: 48),
+        title: Text(result.message),
+        content: result.detail != null
+            ? Text(
+                result.detail!,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              )
+            : null,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   void dispose() {
     _apiKeyController.dispose();
-    _baseUrlController.dispose();
+    _apiUrlController.dispose();
     _modelController.dispose();
     super.dispose();
   }
@@ -205,71 +249,100 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
                       ),
                     const SizedBox(height: 12),
 
-                    // Base URL
+                    // API URL
                     TextField(
-                      controller: _baseUrlController,
-                      enabled: _isCustomProvider,
+                      controller: _apiUrlController,
                       decoration: InputDecoration(
-                        labelText: 'API Base URL',
-                        hintText: 'https://api.openai.com',
+                        labelText: 'API URL',
+                        hintText: 'https://api.openai.com/v1/chat/completions',
                         border: const OutlineInputBorder(),
                         prefixIcon: const Icon(Icons.link),
-                        filled: !_isCustomProvider,
-                        fillColor: !_isCustomProvider
-                            ? Colors.grey.shade100
-                            : null,
-                        suffixIcon: !_isCustomProvider
-                            ? const Icon(
-                                Icons.lock,
-                                color: Colors.grey,
-                                size: 18,
-                              )
-                            : null,
                       ),
                     ),
                     const SizedBox(height: 12),
 
-                    // Model Name
-                    if (_isCustomProvider)
-                      TextField(
-                        controller: _modelController,
-                        decoration: const InputDecoration(
-                          labelText: 'Model Name',
-                          hintText: 'gpt-3.5-turbo',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.smart_toy),
-                        ),
-                      )
-                    else
-                      DropdownButtonFormField<String>(
-                        value:
-                            selectedProvider.models.contains(
-                              _modelController.text,
-                            )
-                            ? _modelController.text
-                            : selectedProvider.defaultModel,
-                        decoration: const InputDecoration(
-                          labelText: '模型',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.smart_toy),
-                        ),
-                        items: [
-                          ...selectedProvider.models.map(
-                            (m) => DropdownMenuItem(value: m, child: Text(m)),
+                    // Model Name - 动态获取 + 手动输入
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_fetchedModels.isNotEmpty)
+                          DropdownButtonFormField<String>(
+                            value:
+                                _fetchedModels.contains(_modelController.text)
+                                ? _modelController.text
+                                : null,
+                            decoration: const InputDecoration(
+                              labelText: '模型',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.smart_toy),
+                            ),
+                            items: [
+                              ..._fetchedModels.map(
+                                (m) =>
+                                    DropdownMenuItem(value: m, child: Text(m)),
+                              ),
+                              const DropdownMenuItem(
+                                value: '__custom__',
+                                child: Text('手动输入模型名称...'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == '__custom__') {
+                                _showCustomModelDialog();
+                              } else if (value != null) {
+                                _modelController.text = value;
+                              }
+                            },
+                          )
+                        else
+                          TextField(
+                            controller: _modelController,
+                            decoration: InputDecoration(
+                              labelText: '模型名称',
+                              hintText: _isCustomProvider
+                                  ? 'gpt-3.5-turbo'
+                                  : selectedProvider.defaultModel,
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.smart_toy),
+                            ),
                           ),
-                          const DropdownMenuItem(
-                            value: '__custom__',
-                            child: Text('自定义模型名称...'),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _isFetchingModels ? null : _fetchModels,
+                            icon: _isFetchingModels
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh, size: 16),
+                            label: Text(
+                              _isFetchingModels
+                                  ? '获取中...'
+                                  : _fetchedModels.isNotEmpty
+                                  ? '刷新模型列表'
+                                  : '从 API 获取模型列表',
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           ),
-                        ],
-                        onChanged: (value) {
-                          if (value == '__custom__') {
-                            _showCustomModelDialog();
-                          } else if (value != null) {
-                            _modelController.text = value;
-                          }
-                        },
-                      ),
+                        ),
+                        if (_fetchModelsFailed)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              '获取失败，请检查 API URL 和 API Key，或手动输入模型名称',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
 
                     // API Key
@@ -345,6 +418,7 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
                   Expanded(
                     child: Text(
                       '所有预设提供商均兼容 OpenAI API 格式。\n'
+                      '选择提供商后自动填入 API URL，也可手动修改。\n'
                       '选择"自定义"可接入任意兼容 OpenAI 格式的 API 端点。\n'
                       '配置完成后可在聊天页面使用 AI 任务分解和情绪支持功能。',
                       style: TextStyle(fontSize: 13, color: Colors.black54),
