@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,15 +17,15 @@ class DataIoActions {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['ics'],
+        withData: true,
       );
 
       if (result == null || result.files.isEmpty) return;
 
-      final path = result.files.single.path;
-      if (path == null) return;
+      final bytes = result.files.single.bytes;
+      if (bytes == null) return;
 
-      final file = File(path);
-      final content = await file.readAsString();
+      final content = utf8.decode(bytes);
       final tasks = IcsService.parseIcs(content);
 
       final isar = await ref.read(isarProvider.future);
@@ -68,39 +68,21 @@ class DataIoActions {
           'catodo_export_${DateTime.now().millisecondsSinceEpoch}.ics';
       final bytes = Uint8List.fromList(icsContent.codeUnits);
 
-      // 优先使用 saveFile（移动端会弹出系统保存对话框）
-      String? savedPath;
-      try {
-        savedPath = await FilePicker.platform.saveFile(
-          dialogTitle: '选择导出位置',
-          fileName: fileName,
-          type: FileType.custom,
-          allowedExtensions: ['ics'],
-          bytes: bytes,
-        );
-      } catch (_) {
-        savedPath = null;
-      }
-
-      if (savedPath == null) {
-        final dirPath = await FilePicker.platform.getDirectoryPath(
-          dialogTitle: '选择导出文件夹',
-        );
-        if (dirPath == null) return; // 用户取消
-        final file = File('$dirPath${Platform.pathSeparator}$fileName');
-        await file.writeAsString(icsContent);
-        savedPath = file.path;
-      } else {
-        final saved = File(savedPath);
-        if (!await saved.exists() || await saved.length() == 0) {
-          await saved.writeAsString(icsContent);
-        }
-      }
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: '选择导出位置',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['ics'],
+        bytes: bytes,
+      );
 
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('导出成功: $savedPath')));
+        if (savedPath != null) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('导出成功: $savedPath')));
+        }
+        // 用户取消时不提示
       }
     } catch (e) {
       if (context.mounted) {
