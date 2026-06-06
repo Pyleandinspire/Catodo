@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'llm_provider_registry.dart';
+import 'ai_agent.dart';
 
 class AIConfig {
   final String providerId;
@@ -451,5 +452,27 @@ class AIService {
     );
 
     return result?['response'] as String?;
+  }
+
+  /// 请求 Agent 执行操作
+  ///
+  /// 使用 Agent 专用 system prompt + 任务上下文，
+  /// LLM 返回包含 reply 和 actions 的 JSON。
+  Future<AgentResponse> requestAgentAction({
+    required String userMessage,
+    required String context,
+  }) async {
+    final systemPrompt = '$kAgentSystemPrompt\n\n$context';
+
+    final result = await requestStructuredOutput(
+      systemPrompt: systemPrompt,
+      userPrompt: userMessage,
+    );
+
+    if (result == null) {
+      return const AgentResponse(reply: '抱歉，我暂时无法处理你的请求。');
+    }
+
+    return AgentResponse.fromJson(result);
   }
 }
