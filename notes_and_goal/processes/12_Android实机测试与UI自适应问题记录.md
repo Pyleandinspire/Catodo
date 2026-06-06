@@ -455,19 +455,22 @@ Nuget.exe not found, trying to download or use cached version.
 
 ### 11.1 UI Overflow 全面排查
 
-**现状**：已修复 `chat_screen.dart` 中的 BottomSheet 固定高度问题，但仍需全面检查。
+**现状**：已修复以下问题：
+
+- ✅ `chat_screen.dart` 中的 BottomSheet 固定高度问题
+- ✅ `task_list_screen.dart` 顶部按钮过多导致溢出（删除了导入/导出按钮）
 
 **待排查文件**：
 
-| 文件                          | 优先级 | 可能问题                       |
-| ----------------------------- | ------ | ------------------------------ |
-| `task_list_screen.dart`       | P1     | 搜索栏、筛选结果列表           |
-| `eisenhower_screen.dart`      | P1     | 四象限矩阵在小屏上可能高度不足 |
-| `settings_screen.dart`        | P1     | 设置卡片列表                   |
-| `data_management_screen.dart` | P1     | 导入/导出操作按钮              |
-| `ai_settings_screen.dart`     | P2     | 模型列表、API 配置表单         |
-| `webdav_settings_screen.dart` | P2     | WebDAV 配置表单                |
-| `day_view_screen.dart`        | P2     | 日视图日程列表                 |
+| 文件                          | 优先级 | 可能问题                       | 状态      |
+| ----------------------------- | ------ | ------------------------------ | --------- |
+| `task_list_screen.dart`       | P1     | 搜索栏、筛选结果列表           | ✅ 已修复 |
+| `eisenhower_screen.dart`      | P1     | 四象限矩阵在小屏上可能高度不足 | 待检查    |
+| `settings_screen.dart`        | P1     | 设置卡片列表                   | 待检查    |
+| `data_management_screen.dart` | P1     | 导入/导出操作按钮              | 待检查    |
+| `ai_settings_screen.dart`     | P2     | 模型列表、API 配置表单         | 待检查    |
+| `webdav_settings_screen.dart` | P2     | WebDAV 配置表单                | 待检查    |
+| `day_view_screen.dart`        | P2     | 日视图日程列表                 | 待检查    |
 
 **检查方法**：
 
@@ -497,7 +500,62 @@ Future versions of Flutter will fail to build if your app uses plugins that appl
 - 当前 Flutter 3.44.0 仍支持 KGP 插件
 - 仅影响未来 Flutter 版本升级时的兼容性
 
-### 11.3 端到端测试
+### 11.3 WebDAV 同步功能修复
+
+**问题**：任务列表页面的同步按钮点击后没有反应，任务列表不更新
+
+**根因分析**：
+
+1. 同步按钮 `onPressed` 是空操作：`onPressed: () {}`
+2. 没有实现真正的同步逻辑
+3. 没有同步状态反馈
+
+**修复方案**：
+
+**1. 修改 `task_list_screen.dart`**：
+
+- 删除了顶部的导入/导出按钮（保留设置页面的导入导出功能）
+- 添加 `_buildSyncButton()` 组件，支持同步状态显示（同步中显示加载指示器）
+- 实现 `_performSync()` 方法，完成完整的同步流程
+
+**2. 修改 `webdav_service.dart`**：
+
+- 添加公共方法 `downloadTasks()` 用于下载远程任务
+
+**同步流程**：
+
+```
+1. 检查 WebDAV 配置是否有效
+2. 设置同步状态为 syncing（显示加载指示器）
+3. 获取本地所有活动任务
+4. 调用 WebDAVService.sync() 执行双向同步
+5. 如果有下载的任务，保存到本地数据库
+6. 显示同步结果提示（成功/失败）
+7. 重置同步状态为 idle
+```
+
+**同步反馈**：
+| 状态 | UI 表现 | 提示信息 |
+|------|----------|----------|
+| 未配置 | 正常图标 | 点击提示"请先配置 WebDAV" |
+| 同步中 | 加载指示器 | 按钮不可点击 |
+| 成功 | 正常图标 | SnackBar："同步成功！上传 X 个，下载 Y 个" |
+| 失败 | 正常图标 | SnackBar（红色）："同步失败: 错误信息" |
+
+**修改文件清单**：
+| 文件 | 修改内容 |
+|------|----------|
+| `lib/ui/screens/task_list_screen.dart` | 删除导入/导出按钮，实现同步功能 |
+| `lib/services/webdav_service.dart` | 添加 `downloadTasks()` 公共方法 |
+
+**验证方法**：
+
+1. 进入设置页面配置 WebDAV
+2. 点击任务列表页面的同步按钮
+3. 观察加载指示器显示
+4. 验证 SnackBar 提示同步结果
+
+### 11.4 端到端测试
 
 **现状**：当前 147 个测试用例覆盖了单元测试和部分 Widget 测试，但缺少端到端集成测试。
 
@@ -565,12 +623,13 @@ flutter test integration_test/app_test.dart
 
 ### 12.1 核心问题解决
 
-| 问题                | 根因                                                          | 解决方案                                      | 影响                   |
-| ------------------- | ------------------------------------------------------------- | --------------------------------------------- | ---------------------- |
-| **Android 16 黑屏** | `runApp()` 在异步初始化之后调用，原生层崩溃导致 UI 永远不渲染 | 先 `runApp()` 再异步初始化服务                | 应用可正常启动         |
-| **R8 构建失败**     | Flutter Embedding 引用了未使用的 Google Play Core 库          | 在 `proguard-rules.pro` 添加 `-dontwarn` 规则 | Release APK 可正常构建 |
-| **UI Overflow**     | BottomSheet 使用固定高度 `height: 400`                        | 使用 `LayoutBuilder` 动态计算高度             | 小屏手机布局正常       |
-| **通知权限问题**    | Android 13+ 需要运行时权限                                    | 使用 `permission_handler` 请求权限            | 通知功能正常           |
+| 问题                  | 根因                                                          | 解决方案                                        | 影响                   |
+| --------------------- | ------------------------------------------------------------- | ----------------------------------------------- | ---------------------- |
+| **Android 16 黑屏**   | `runApp()` 在异步初始化之后调用，原生层崩溃导致 UI 永远不渲染 | 先 `runApp()` 再异步初始化服务                  | 应用可正常启动         |
+| **R8 构建失败**       | Flutter Embedding 引用了未使用的 Google Play Core 库          | 在 `proguard-rules.pro` 添加 `-dontwarn` 规则   | Release APK 可正常构建 |
+| **UI Overflow**       | BottomSheet 使用固定高度 `height: 400`，顶部按钮过多          | 使用 `LayoutBuilder` 动态计算高度，删除冗余按钮 | 小屏手机布局正常       |
+| **通知权限问题**      | Android 13+ 需要运行时权限                                    | 使用 `permission_handler` 请求权限              | 通知功能正常           |
+| **WebDAV 同步未实现** | 同步按钮 `onPressed` 为空操作，无实际同步逻辑                 | 实现完整同步流程，添加状态反馈和结果提示        | 同步功能正常工作       |
 
 ### 12.2 关键技术改进
 

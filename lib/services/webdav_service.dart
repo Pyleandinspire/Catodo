@@ -237,6 +237,12 @@ class WebDAVService {
     }
   }
 
+  Future<List<Task>> downloadTasks() async {
+    final data = await _downloadTasks();
+    if (data == null) return [];
+    return _jsonToTasks(data);
+  }
+
   Map<String, dynamic> _tasksToJson(List<Task> tasks) {
     return {
       'tasks': tasks
