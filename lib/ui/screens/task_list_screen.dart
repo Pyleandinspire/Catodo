@@ -5,7 +5,10 @@ import '../../providers/task_providers.dart';
 import '../../models/filter.dart';
 import 'task_form_screen.dart';
 import 'day_view_screen.dart';
-import 'data_management_screen.dart';
+import '../../services/webdav_service.dart';
+import '../../providers/webdav_provider.dart';
+import '../../data/task_dao.dart';
+import '../../providers/isar_provider.dart';
 
 class TaskListScreen extends ConsumerWidget {
   const TaskListScreen({super.key});
@@ -78,22 +81,6 @@ class TaskListScreen extends ConsumerWidget {
                         tooltip: '添加任务',
                       ),
                       IconButton(
-                        onPressed: () => DataIoActions.importIcs(context, ref),
-                        icon: const Icon(
-                          Icons.file_download,
-                          color: Colors.black,
-                        ),
-                        tooltip: '导入',
-                      ),
-                      IconButton(
-                        onPressed: () => DataIoActions.exportIcs(context, ref),
-                        icon: const Icon(
-                          Icons.file_upload,
-                          color: Colors.black,
-                        ),
-                        tooltip: '导出',
-                      ),
-                      IconButton(
                         onPressed: () => _showFilterDialog(context, ref),
                         icon: const Icon(
                           Icons.filter_list,
@@ -101,11 +88,7 @@ class TaskListScreen extends ConsumerWidget {
                         ),
                         tooltip: '筛选',
                       ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.sync, color: Colors.black),
-                        tooltip: '同步',
-                      ),
+                      _buildSyncButton(context, ref),
                     ],
                   ),
                 ],
@@ -264,5 +247,80 @@ class TaskListScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildSyncButton(BuildContext context, WidgetRef ref) {
+    final syncStatus = ref.watch(syncStatusProvider);
+
+    return IconButton(
+      onPressed: syncStatus == SyncStatus.syncing
+          ? null
+          : () => _performSync(context, ref),
+      icon: syncStatus == SyncStatus.syncing
+          ? const CircularProgressIndicator(strokeWidth: 2, color: Colors.black)
+          : const Icon(Icons.sync, color: Colors.black),
+      tooltip: syncStatus == SyncStatus.syncing ? '同步中...' : '同步',
+    );
+  }
+
+  Future<void> _performSync(BuildContext context, WidgetRef ref) async {
+    final config = ref.read(webdavConfigProvider);
+
+    if (!config.isValid) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请先配置 WebDAV')));
+      }
+      return;
+    }
+
+    ref.read(syncStatusProvider.notifier).state = SyncStatus.syncing;
+
+    try {
+      final isar = await ref.read(isarProvider.future);
+      final dao = TaskDao(isar);
+      final localTasks = await dao.getAllActiveTasks();
+
+      final service = WebDAVService(config);
+      final result = await service.sync(localTasks);
+
+      if (result.status == SyncStatus.synced) {
+        // 下载的任务需要保存到本地
+        if (result.downloadedCount > 0) {
+          final remoteTasks = await service.downloadTasks();
+          for (final task in remoteTasks) {
+            await dao.insertTask(task);
+          }
+        }
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '同步成功！上传 ${result.uploadedCount} 个，下载 ${result.downloadedCount} 个',
+              ),
+            ),
+          );
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('同步失败: ${result.error ?? '未知错误'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('同步异常: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      ref.read(syncStatusProvider.notifier).state = SyncStatus.idle;
+    }
   }
 }
