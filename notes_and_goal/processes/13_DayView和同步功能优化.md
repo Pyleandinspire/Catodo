@@ -4,11 +4,7 @@
 
 从 dev 分支创建新功能分支：
 
-```bash
-git checkout -b feature/dayview-and-sync
-```
-
----
+feats
 
 ## 功能一：按天视图UI改善和查看模式
 
