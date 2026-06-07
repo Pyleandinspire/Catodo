@@ -162,9 +162,16 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   }
 
   Future<void> _addReminderTime() async {
+    // 默认日期：优先用截止日期（如果未过期），否则用今天
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final defaultDate = _dueDate != null && !_dueDate!.isBefore(today)
+        ? _dueDate!
+        : now;
+
     final date = await showDatePicker(
       context: context,
-      initialDate: _dueDate ?? DateTime.now(),
+      initialDate: defaultDate,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
@@ -609,11 +616,86 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                   ),
                 ),
               ),
+              // 删除任务按钮（仅编辑模式显示）
+              if (widget.task != null) ...[
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _confirmDelete(context),
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    label: const Text(
+                      '删除任务',
+                      style: TextStyle(color: Colors.red, fontSize: 16),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除任务"${widget.task!.title}"吗？\n\n删除后可通过同步从其他设备恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      await _deleteTask(context);
+    }
+  }
+
+  Future<void> _deleteTask(BuildContext context) async {
+    try {
+      final isar = await ref.read(isarProvider.future);
+      final dao = TaskDao(isar);
+
+      // 取消该任务的所有提醒通知
+      await NotificationService().cancelTaskReminder(widget.task!);
+
+      // 软删除任务
+      await dao.softDeleteTask(widget.task!.id);
+
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('任务已删除')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Widget _priorityButton(int priority, String label) {

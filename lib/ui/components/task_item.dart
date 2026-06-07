@@ -61,7 +61,7 @@ class TaskItem extends ConsumerWidget {
   }
 
   Future<void> _toggleComplete(WidgetRef ref, Task task) async {
-    final isar = await ref.watch(isarProvider.future);
+    final isar = await ref.read(isarProvider.future);
     final dao = TaskDao(isar);
 
     if (task.isRepeatParent && !task.isCompleted) {
@@ -74,13 +74,13 @@ class TaskItem extends ConsumerWidget {
           await NotificationService().scheduleTaskReminder(nextTask);
         }
       } catch (e) {
-        print('Failed to create next task: $e');
+        debugPrint('Failed to create next task: $e');
       }
     } else {
       await dao.updateTask(task.copyWith(isCompleted: !task.isCompleted));
     }
 
-    await NotificationService().cancelTaskReminder(task.id);
+    await NotificationService().cancelTaskReminder(task);
   }
 
   @override

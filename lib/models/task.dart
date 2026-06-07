@@ -1,10 +1,14 @@
 import 'package:isar/isar.dart';
+import 'package:uuid/uuid.dart';
 
 part 'task.g.dart';
 
 @collection
 class Task {
   Id id = Isar.autoIncrement;
+
+  @Index(unique: true, replace: true)
+  String? syncId;
 
   @Index(type: IndexType.value)
   late String title;
@@ -34,6 +38,8 @@ class Task {
 
   List<DateTime> reminderTimes = [];
 
+  static const _uuid = Uuid();
+
   Task({
     required this.title,
     this.description,
@@ -45,11 +51,13 @@ class Task {
     this.rrule,
     this.isRepeatParent = false,
     List<DateTime> reminderTimes = const [],
+    this.syncId,
   })  : tags = List.from(tags),
         reminderTimes = List.from(reminderTimes) {
     this.createdAt = DateTime.now();
     this.updatedAt = DateTime.now();
     this.isDeleted = false;
+    this.syncId ??= _uuid.v4();
   }
 
   Task copyWith({
@@ -64,6 +72,7 @@ class Task {
     bool? isRepeatParent,
     List<DateTime>? reminderTimes,
     DateTime? updatedAt,
+    String? syncId,
   }) {
     return Task(
       title: title ?? this.title,
@@ -76,6 +85,7 @@ class Task {
       rrule: rrule ?? this.rrule,
       isRepeatParent: isRepeatParent ?? this.isRepeatParent,
       reminderTimes: reminderTimes ?? this.reminderTimes,
+      syncId: syncId ?? this.syncId,
     )
       ..id = id
       ..createdAt = createdAt

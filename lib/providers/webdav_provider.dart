@@ -29,9 +29,34 @@ class WebDAVConfigNotifier extends StateNotifier<WebDAVConfig> {
   }
 }
 
+class SyncModeNotifier extends StateNotifier<SyncMode> {
+  static const _key = 'sync_mode';
+
+  SyncModeNotifier() : super(SyncMode.autoMerge) {
+    _loadMode();
+  }
+
+  Future<void> _loadMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final index = prefs.getInt(_key) ?? 0;
+    state = SyncMode.values[index.clamp(0, SyncMode.values.length - 1)];
+  }
+
+  Future<void> setMode(SyncMode mode) async {
+    state = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_key, mode.index);
+  }
+}
+
 final webdavConfigProvider =
     StateNotifierProvider<WebDAVConfigNotifier, WebDAVConfig>((ref) {
   return WebDAVConfigNotifier();
 });
 
 final syncStatusProvider = StateProvider<SyncStatus>((ref) => SyncStatus.idle);
+
+final syncModeProvider =
+    StateNotifierProvider<SyncModeNotifier, SyncMode>((ref) {
+  return SyncModeNotifier();
+});

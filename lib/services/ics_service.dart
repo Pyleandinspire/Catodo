@@ -82,9 +82,9 @@ class IcsService {
 
   static String _unescapeIcs(String s) {
     return s
-        .replaceAll('\\n', '\n')
+        .replaceAll('\\\\', '\\')
         .replaceAll('\\,', ',')
-        .replaceAll('\\\\', '\\');
+        .replaceAll('\\n', '\n');
   }
 
   static String _formatIcsDate(DateTime dt) {

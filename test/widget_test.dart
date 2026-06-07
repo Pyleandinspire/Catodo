@@ -141,7 +141,7 @@ void main() {
       // 所有方法都应安全调用，不抛异常
       await service.initialize();
       await service.showNotification(1, '标题', '内容');
-      await service.cancelTaskReminder(1);
+      await service.cancelTaskReminder(Task(title: 'test'));
       await service.rescheduleAllReminders([]);
 
       final task = Task(title: '测试');
@@ -379,7 +379,7 @@ void main() {
       // 以下调用不会抛 NoSuchMethodError
       await service.initialize();
       await service.showNotification(1, 'test', 'body');
-      await service.cancelTaskReminder(1);
+      await service.cancelTaskReminder(Task(title: 'test'));
       await service.rescheduleAllReminders([]);
       await service.scheduleTaskReminder(Task(title: 'test'));
     });

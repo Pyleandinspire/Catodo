@@ -43,7 +43,7 @@ class NotificationService {
       final reminderTime = task.reminderTimes[i];
       if (reminderTime.isBefore(DateTime.now())) continue;
 
-      final notificationId = task.id * 10 + i;
+      final notificationId = Object.hash(task.syncId, i);
 
       try {
         await _plugin.zonedSchedule(
@@ -70,11 +70,11 @@ class NotificationService {
     }
   }
 
-  Future<void> cancelTaskReminder(int taskId) async {
+  Future<void> cancelTaskReminder(Task task) async {
     if (!_initialized) return;
     try {
-      for (int i = 0; i < 10; i++) {
-        await _plugin.cancel(taskId * 10 + i);
+      for (int i = 0; i < task.reminderTimes.length + 1; i++) {
+        await _plugin.cancel(Object.hash(task.syncId, i));
       }
     } catch (_) {
       // Platform doesn't support notifications
