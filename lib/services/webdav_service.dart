@@ -27,17 +27,25 @@ class WebDAVConfig {
 
 enum SyncStatus { idle, syncing, synced, failed }
 
+enum SyncMode {
+  autoMerge,
+  localFirst,
+  remoteFirst,
+}
+
 class SyncResult {
   final SyncStatus status;
   final int uploadedCount;
   final int downloadedCount;
   final String? error;
+  final List<Task> mergedTasks;
 
   SyncResult({
     required this.status,
     this.uploadedCount = 0,
     this.downloadedCount = 0,
     this.error,
+    this.mergedTasks = const [],
   });
 }
 
@@ -58,7 +66,11 @@ class WebDAVService {
         ),
       );
 
-  String get _tasksFileName => 'Catodo/catodo_tasks.json';
+  /// 旧格式文件名（保留兼容）
+  String get _oldTasksFileName => 'Catodo/catodo_tasks.json';
+
+  /// 新格式文件名（catodo 完整格式）
+  String get _newTasksFileName => 'Catodo/catodo_full.catodo';
 
   String buildUrl(String path) {
     final baseUrl = config.url.endsWith('/')
@@ -118,8 +130,8 @@ class WebDAVService {
     }
   }
 
-  Future<Map<String, dynamic>?> _downloadTasks() async {
-    final url = buildUrl('/$_tasksFileName');
+  Future<Map<String, dynamic>?> _downloadFile(String fileName) async {
+    final url = buildUrl('/$fileName');
     try {
       final response = await _dio.get(url);
       if (response.statusCode == 200) {
@@ -139,8 +151,8 @@ class WebDAVService {
     return null;
   }
 
-  Future<bool> _uploadTasks(Map<String, dynamic> data) async {
-    final url = buildUrl('/$_tasksFileName');
+  Future<bool> _uploadFile(String fileName, Map<String, dynamic> data) async {
+    final url = buildUrl('/$fileName');
     try {
       await _createDirectory('/Catodo');
 
@@ -172,17 +184,39 @@ class WebDAVService {
     }
   }
 
-  Future<SyncResult> sync(List<Task> localTasks) async {
+  /// 下载远程任务数据：优先读新格式，不存在则回退读旧格式
+  Future<Map<String, dynamic>?> _downloadTasks() async {
+    final newData = await _downloadFile(_newTasksFileName);
+    if (newData != null) return newData;
+    // 回退读旧格式
+    return await _downloadFile(_oldTasksFileName);
+  }
+
+  /// 上传任务数据：新旧格式都写，保证兼容
+  Future<bool> _uploadTasksBoth(Map<String, dynamic> data) async {
+    final newResult = await _uploadFile(_newTasksFileName, data);
+    // 旧格式也写一份（仅 tasks 部分）
+    final oldData = {'tasks': data['tasks']};
+    await _uploadFile(_oldTasksFileName, oldData);
+    return newResult;
+  }
+
+  Future<SyncResult> sync(
+    List<Task> localTasks, {
+    SyncMode mode = SyncMode.autoMerge,
+  }) async {
     try {
       final remoteData = await _downloadTasks();
 
       if (remoteData == null) {
         // 首次同步：上传所有本地任务
-        final success = await _uploadTasks(_tasksToJson(localTasks));
+        final data = _tasksToJson(localTasks);
+        final success = await _uploadTasksBoth(data);
         return SyncResult(
           status: success ? SyncStatus.synced : SyncStatus.failed,
           uploadedCount: success ? localTasks.length : 0,
           error: success ? null : '上传失败',
+          mergedTasks: localTasks,
         );
       }
 
@@ -196,26 +230,22 @@ class WebDAVService {
 
       final mergedTasks = <Task>[];
 
-      // 处理本地任务
       for (final task in localTasks) {
         final remoteTask = remoteMap[task.id];
         if (remoteTask == null) {
-          // 本地新增任务
           mergedTasks.add(task);
           uploadedCount++;
         } else {
-          // 两边都有，用更新时间判断
-          if (task.updatedAt.isAfter(remoteTask.updatedAt)) {
-            mergedTasks.add(task);
+          final winner = _resolveConflict(task, remoteTask, mode);
+          mergedTasks.add(winner);
+          if (winner.id == task.id && winner.updatedAt == task.updatedAt) {
             uploadedCount++;
           } else {
-            mergedTasks.add(remoteTask);
             downloadedCount++;
           }
         }
       }
 
-      // 处理远程新增任务
       for (final remoteTask in remoteTasks) {
         if (!localMap.containsKey(remoteTask.id)) {
           mergedTasks.add(remoteTask);
@@ -223,17 +253,30 @@ class WebDAVService {
         }
       }
 
-      // 上传合并后的数据
-      final uploadSuccess = await _uploadTasks(_tasksToJson(mergedTasks));
+      final data = _tasksToJson(mergedTasks);
+      final uploadSuccess = await _uploadTasksBoth(data);
 
       return SyncResult(
         status: uploadSuccess ? SyncStatus.synced : SyncStatus.failed,
         uploadedCount: uploadedCount,
         downloadedCount: downloadedCount,
         error: uploadSuccess ? null : '上传合并结果失败',
+        mergedTasks: mergedTasks,
       );
     } catch (e) {
       return SyncResult(status: SyncStatus.failed, error: e.toString());
+    }
+  }
+
+  /// 根据同步模式解决冲突
+  Task _resolveConflict(Task local, Task remote, SyncMode mode) {
+    switch (mode) {
+      case SyncMode.autoMerge:
+        return local.updatedAt.isAfter(remote.updatedAt) ? local : remote;
+      case SyncMode.localFirst:
+        return local;
+      case SyncMode.remoteFirst:
+        return remote;
     }
   }
 

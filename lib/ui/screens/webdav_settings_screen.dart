@@ -86,6 +86,7 @@ class _WebDAVSettingsScreenState extends ConsumerState<WebDAVSettingsScreen> {
 
     try {
       final config = ref.read(webdavConfigProvider);
+      final syncMode = ref.read(syncModeProvider);
       final service = WebDAVService(config);
       final isarAsync = ref.read(isarProvider);
 
@@ -94,14 +95,19 @@ class _WebDAVSettingsScreenState extends ConsumerState<WebDAVSettingsScreen> {
       if (isar != null) {
         final dao = TaskDao(isar);
         final localTasks = await dao.getAllTasks();
-        result = await service.sync(localTasks);
+        result = await service.sync(localTasks, mode: syncMode);
       } else {
         result = SyncResult(status: SyncStatus.failed, error: '数据库未就绪');
       }
 
       if (result.status == SyncStatus.synced) {
-        // 将远程下载的任务写入本地
-        // 注意：sync 方法返回了合并后的结果，但我们需要重新写入本地
+        // 将合并后的任务写回本地数据库
+        if (isarAsync.valueOrNull != null) {
+          final dao = TaskDao(isarAsync.valueOrNull!);
+          for (final task in result.mergedTasks) {
+            await dao.updateTask(task);
+          }
+        }
         ref.read(syncStatusProvider.notifier).state = SyncStatus.synced;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -136,9 +142,46 @@ class _WebDAVSettingsScreenState extends ConsumerState<WebDAVSettingsScreen> {
     }
   }
 
+  void _showSyncModeInfo(SyncMode mode) {
+    final descriptions = {
+      SyncMode.autoMerge:
+          '自动合并（默认）：基于更新时间戳的增量同步。冲突时更新时间较新的版本胜出，双方独有的任务都会保留。',
+      SyncMode.localFirst:
+          '本地优先：冲突时以本地版本为准，双方独有的任务都会保留。远程修改不会覆盖本地数据。',
+      SyncMode.remoteFirst:
+          '远程优先：冲突时以远程版本为准，双方独有的任务都会保留。适合从其他设备恢复数据。',
+    };
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_modeLabel(mode)),
+        content: Text(descriptions[mode] ?? ''),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _modeLabel(SyncMode mode) {
+    switch (mode) {
+      case SyncMode.autoMerge:
+        return '自动合并';
+      case SyncMode.localFirst:
+        return '本地优先';
+      case SyncMode.remoteFirst:
+        return '远程优先';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final syncStatus = ref.watch(syncStatusProvider);
+    final syncMode = ref.watch(syncModeProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -225,6 +268,58 @@ class _WebDAVSettingsScreenState extends ConsumerState<WebDAVSettingsScreen> {
                       ],
                     ),
                   ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              '同步模式',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: RadioGroup<SyncMode>(
+                  groupValue: syncMode,
+                  onChanged: (value) {
+                    if (value != null) {
+                      ref.read(syncModeProvider.notifier).setMode(value);
+                    }
+                  },
+                  child: Column(
+                    children: SyncMode.values.map((mode) {
+                      return RadioListTile<SyncMode>(
+                        value: mode,
+                        title: Row(
+                          children: [
+                            Text(_modeLabel(mode)),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () => _showSyncModeInfo(mode),
+                              child: Icon(
+                                Icons.help_outline,
+                                size: 18,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                        subtitle: Text(
+                          _modeShortDesc(mode),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ),
               ),
             ),
@@ -323,7 +418,7 @@ class _WebDAVSettingsScreenState extends ConsumerState<WebDAVSettingsScreen> {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '同步策略：基于更新时间戳的增量同步。\n冲突时以服务器版本为准，本地修改会被保留。',
+                      '同步策略：基于更新时间戳的增量同步。\n双方独有的任务都会保留，已完成任务也会同步。',
                       style: TextStyle(fontSize: 13, color: Colors.black54),
                     ),
                   ),
@@ -334,6 +429,17 @@ class _WebDAVSettingsScreenState extends ConsumerState<WebDAVSettingsScreen> {
         ),
       ),
     );
+  }
+
+  String _modeShortDesc(SyncMode mode) {
+    switch (mode) {
+      case SyncMode.autoMerge:
+        return '冲突时取更新时间较新的版本';
+      case SyncMode.localFirst:
+        return '冲突时以本地版本为准';
+      case SyncMode.remoteFirst:
+        return '冲突时以远程版本为准';
+    }
   }
 
   Color _statusColor(SyncStatus status) {
