@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:isar/isar.dart';
 import 'ui/screens/task_list_screen.dart';
 import 'ui/screens/eisenhower_screen.dart';
 import 'ui/screens/chat_screen.dart';
@@ -88,14 +89,14 @@ Future<void> _initializeServices() async {
   }
 }
 
-class CatodoApp extends StatefulWidget {
+class CatodoApp extends ConsumerStatefulWidget {
   const CatodoApp({super.key});
 
   @override
-  State<CatodoApp> createState() => _CatodoAppState();
+  ConsumerState<CatodoApp> createState() => _CatodoAppState();
 }
 
-class _CatodoAppState extends State<CatodoApp> {
+class _CatodoAppState extends ConsumerState<CatodoApp> {
   int _selectedIndex = 0;
 
   static const List<Widget> _screens = [
@@ -111,7 +112,7 @@ class _CatodoAppState extends State<CatodoApp> {
     });
   }
 
-  void _rescheduleReminders(dynamic isar) async {
+  void _rescheduleReminders(Isar isar) async {
     try {
       final dao = TaskDao(isar);
       final tasks = await dao.getAllTasks();
@@ -120,8 +121,17 @@ class _CatodoAppState extends State<CatodoApp> {
           .toList();
       await NotificationService().rescheduleAllReminders(tasksWithReminders);
     } catch (e) {
-      print('Failed to reschedule reminders: $e');
+      debugPrint('Failed to reschedule reminders: $e');
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // 监听 isarProvider 就绪后调度提醒（仅执行一次）
+    ref.listenManual(isarProvider, (prev, next) {
+      next.whenData((isar) => _rescheduleReminders(isar));
+    });
   }
 
   @override
@@ -134,7 +144,6 @@ class _CatodoAppState extends State<CatodoApp> {
           final isarAsync = ref.watch(isarProvider);
           return isarAsync.when(
             data: (isar) {
-              _rescheduleReminders(isar);
               return AdaptiveNavigation(
                 selectedIndex: _selectedIndex,
                 onDestinationSelected: _onItemTapped,

@@ -27,6 +27,17 @@ class DayViewScreen extends ConsumerWidget {
     return '${date.month}月${date.day}日';
   }
 
+  String _modeLabel(DayViewMode m) {
+    switch (m) {
+      case DayViewMode.all:
+        return '全部';
+      case DayViewMode.focusToday:
+        return '专注今日';
+      case DayViewMode.hideOverdue:
+        return '隐藏过期';
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final allTasks = ref.watch(filteredTasksProvider);
@@ -90,17 +101,6 @@ class DayViewScreen extends ConsumerWidget {
 
         return a.compareTo(b);
       });
-
-    String _modeLabel(DayViewMode m) {
-      switch (m) {
-        case DayViewMode.all:
-          return '全部';
-        case DayViewMode.focusToday:
-          return '专注今日';
-        case DayViewMode.hideOverdue:
-          return '隐藏过期';
-      }
-    }
 
     return Scaffold(
       appBar: AppBar(

@@ -105,6 +105,7 @@ class CatodoIOService {
       'dueDate': t.dueDate?.toIso8601String(),
       'tags': t.tags,
       'groupName': t.groupName,
+      'syncId': t.syncId,
       'rrule': t.rrule,
       'isRepeatParent': t.isRepeatParent,
       'createdAt': t.createdAt.toIso8601String(),
@@ -124,6 +125,7 @@ class CatodoIOService {
       dueDate: t['dueDate'] != null ? DateTime.parse(t['dueDate']) : null,
       tags: List<String>.from(t['tags'] ?? []),
       groupName: t['groupName'],
+      syncId: t['syncId'] as String?,
       rrule: t['rrule'],
       isRepeatParent: t['isRepeatParent'] ?? false,
       reminderTimes: (t['reminderTimes'] as List<dynamic>?)

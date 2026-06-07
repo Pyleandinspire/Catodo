@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 
 class WebDAVConfig {
@@ -88,11 +90,11 @@ class WebDAVService {
       );
       return response.statusCode == 207 || response.statusCode == 200;
     } on DioException catch (e) {
-      print('WebDAV 连接测试失败: ${e.message}');
-      print('  请求 URL: ${buildUrl('/')}');
+      debugPrint('WebDAV 连接测试失败: ${e.message}');
+      debugPrint('  请求 URL: ${buildUrl('/')}');
       return false;
     } catch (e) {
-      print('WebDAV 连接异常: $e');
+      debugPrint('WebDAV 连接异常: $e');
       return false;
     }
   }
@@ -112,20 +114,20 @@ class WebDAVService {
           response.statusCode == 405) {
         return true;
       }
-      print('WebDAV 创建目录失败: 状态码 ${response.statusCode}');
-      print('  请求 URL: $url');
+      debugPrint('WebDAV 创建目录失败: 状态码 ${response.statusCode}');
+      debugPrint('  请求 URL: $url');
       return false;
     } on DioException catch (e) {
       if (e.response?.statusCode == 405) {
         return true;
       }
-      print('WebDAV 创建目录失败: ${e.message}');
-      print('  请求 URL: $url');
-      print('  状态码: ${e.response?.statusCode}');
+      debugPrint('WebDAV 创建目录失败: ${e.message}');
+      debugPrint('  请求 URL: $url');
+      debugPrint('  状态码: ${e.response?.statusCode}');
       return false;
     } catch (e) {
-      print('WebDAV 创建目录异常: $e');
-      print('  请求 URL: $url');
+      debugPrint('WebDAV 创建目录异常: $e');
+      debugPrint('  请求 URL: $url');
       return false;
     }
   }
@@ -141,12 +143,12 @@ class WebDAVService {
       if (e.response?.statusCode == 404) {
         return null;
       }
-      print('WebDAV 下载失败: ${e.message}');
-      print('  请求 URL: $url');
-      print('  状态码: ${e.response?.statusCode}');
+      debugPrint('WebDAV 下载失败: ${e.message}');
+      debugPrint('  请求 URL: $url');
+      debugPrint('  状态码: ${e.response?.statusCode}');
     } catch (e) {
-      print('WebDAV 下载异常: $e');
-      print('  请求 URL: $url');
+      debugPrint('WebDAV 下载异常: $e');
+      debugPrint('  请求 URL: $url');
     }
     return null;
   }
@@ -169,17 +171,17 @@ class WebDAVService {
           response.statusCode == 204) {
         return true;
       }
-      print('WebDAV 上传失败: 状态码 ${response.statusCode}');
-      print('  请求 URL: $url');
+      debugPrint('WebDAV 上传失败: 状态码 ${response.statusCode}');
+      debugPrint('  请求 URL: $url');
       return false;
     } on DioException catch (e) {
-      print('WebDAV 上传失败: ${e.message}');
-      print('  请求 URL: $url');
-      print('  状态码: ${e.response?.statusCode}');
+      debugPrint('WebDAV 上传失败: ${e.message}');
+      debugPrint('  请求 URL: $url');
+      debugPrint('  状态码: ${e.response?.statusCode}');
       return false;
     } catch (e) {
-      print('WebDAV 上传异常: $e');
-      print('  请求 URL: $url');
+      debugPrint('WebDAV 上传异常: $e');
+      debugPrint('  请求 URL: $url');
       return false;
     }
   }
@@ -206,6 +208,11 @@ class WebDAVService {
     SyncMode mode = SyncMode.autoMerge,
   }) async {
     try {
+      // 为没有 syncId 的任务生成 syncId（数据迁移）
+      for (final task in localTasks) {
+        task.syncId ??= const Uuid().v4();
+      }
+
       final remoteData = await _downloadTasks();
 
       if (remoteData == null) {
@@ -225,20 +232,30 @@ class WebDAVService {
       int uploadedCount = 0;
       int downloadedCount = 0;
 
-      final remoteMap = {for (var t in remoteTasks) t.id: t};
-      final localMap = {for (var t in localTasks) t.id: t};
+      final remoteMap = <String, Task>{};
+      for (final t in remoteTasks) {
+        if (t.syncId != null) {
+          remoteMap[t.syncId!] = t;
+        }
+      }
+      final localMap = <String, Task>{};
+      for (final t in localTasks) {
+        if (t.syncId != null) {
+          localMap[t.syncId!] = t;
+        }
+      }
 
       final mergedTasks = <Task>[];
 
       for (final task in localTasks) {
-        final remoteTask = remoteMap[task.id];
+        final remoteTask = task.syncId != null ? remoteMap[task.syncId] : null;
         if (remoteTask == null) {
           mergedTasks.add(task);
           uploadedCount++;
         } else {
           final winner = _resolveConflict(task, remoteTask, mode);
           mergedTasks.add(winner);
-          if (winner.id == task.id && winner.updatedAt == task.updatedAt) {
+          if (identical(winner, task)) {
             uploadedCount++;
           } else {
             downloadedCount++;
@@ -247,7 +264,8 @@ class WebDAVService {
       }
 
       for (final remoteTask in remoteTasks) {
-        if (!localMap.containsKey(remoteTask.id)) {
+        final exists = remoteTask.syncId != null && localMap.containsKey(remoteTask.syncId);
+        if (!exists) {
           mergedTasks.add(remoteTask);
           downloadedCount++;
         }
@@ -280,6 +298,19 @@ class WebDAVService {
     }
   }
 
+  /// 测试辅助：公开 _tasksToJson
+  @visibleForTesting
+  Map<String, dynamic> tasksToJsonTest(List<Task> tasks) => _tasksToJson(tasks);
+
+  /// 测试辅助：公开 _jsonToTasks
+  @visibleForTesting
+  List<Task> jsonToTasksTest(Map<String, dynamic> json) => _jsonToTasks(json);
+
+  /// 测试辅助：公开 _resolveConflict
+  @visibleForTesting
+  Task resolveConflictTest(Task local, Task remote, SyncMode mode) =>
+      _resolveConflict(local, remote, mode);
+
   Future<List<Task>> downloadTasks() async {
     final data = await _downloadTasks();
     if (data == null) return [];
@@ -292,6 +323,7 @@ class WebDAVService {
           .map(
             (t) => {
               'id': t.id,
+              'syncId': t.syncId,
               'title': t.title,
               'description': t.description,
               'isCompleted': t.isCompleted,
@@ -327,6 +359,7 @@ class WebDAVService {
                   : null,
               tags: List<String>.from(t['tags'] ?? []),
               groupName: t['groupName'],
+              syncId: t['syncId'] as String?,
               rrule: t['rrule'],
               isRepeatParent: t['isRepeatParent'] ?? false,
               reminderTimes:

@@ -109,7 +109,7 @@ class AIService {
       models.sort();
       return models;
     } catch (e) {
-      print('获取模型列表失败: $e');
+      debugPrint('获取模型列表失败: $e');
       return [];
     }
   }
@@ -142,19 +142,19 @@ class AIService {
 
       final rawContent = _extractContent(response.data);
       if (rawContent == null) {
-        print('AI API 响应格式无法解析: ${response.data}');
+        debugPrint('AI API 响应格式无法解析: ${response.data}');
         return null;
       }
 
       return _parseJsonContent(rawContent);
     } on DioException catch (e) {
       final errorMsg = _parseError(e);
-      print('AI API 请求失败: $errorMsg');
-      print('  请求 URL: $fullApiUrl');
+      debugPrint('AI API 请求失败: $errorMsg');
+      debugPrint('  请求 URL: $fullApiUrl');
       return null;
     } catch (e) {
-      print('AI 服务异常: $e');
-      print('  请求 URL: $fullApiUrl');
+      debugPrint('AI 服务异常: $e');
+      debugPrint('  请求 URL: $fullApiUrl');
       return null;
     }
   }

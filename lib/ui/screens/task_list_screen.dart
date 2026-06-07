@@ -281,17 +281,15 @@ class TaskListScreen extends ConsumerWidget {
       final isar = await ref.read(isarProvider.future);
       final dao = TaskDao(isar);
       final localTasks = await dao.getAllActiveTasks();
+      final syncMode = ref.read(syncModeProvider);
 
       final service = WebDAVService(config);
-      final result = await service.sync(localTasks);
+      final result = await service.sync(localTasks, mode: syncMode);
 
       if (result.status == SyncStatus.synced) {
-        // 下载的任务需要保存到本地
-        if (result.downloadedCount > 0) {
-          final remoteTasks = await service.downloadTasks();
-          for (final task in remoteTasks) {
-            await dao.insertTask(task);
-          }
+        // 使用 sync 返回的合并结果更新本地数据库
+        for (final task in result.mergedTasks) {
+          await dao.updateTask(task);
         }
 
         if (context.mounted) {

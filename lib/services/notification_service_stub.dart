@@ -10,7 +10,7 @@ class NotificationService {
 
   Future<void> scheduleTaskReminder(Task task) async {}
 
-  Future<void> cancelTaskReminder(int taskId) async {}
+  Future<void> cancelTaskReminder(Task task) async {}
 
   Future<void> showNotification(int id, String title, String body) async {}
 
