@@ -29,11 +29,7 @@ class WebDAVConfig {
 
 enum SyncStatus { idle, syncing, synced, failed }
 
-enum SyncMode {
-  autoMerge,
-  localFirst,
-  remoteFirst,
-}
+enum SyncMode { autoMerge, localFirst, remoteFirst }
 
 class SyncResult {
   final SyncStatus status;
@@ -264,12 +260,25 @@ class WebDAVService {
       }
 
       for (final remoteTask in remoteTasks) {
-        final exists = remoteTask.syncId != null && localMap.containsKey(remoteTask.syncId);
+        final exists =
+            remoteTask.syncId != null &&
+            localMap.containsKey(remoteTask.syncId);
         if (!exists) {
           mergedTasks.add(remoteTask);
           downloadedCount++;
         }
       }
+
+      // 过滤双方都删除的任务（不再上传到云端）
+      mergedTasks.removeWhere((t) {
+        if (t.syncId == null) return false;
+        final local = localMap[t.syncId];
+        final remote = remoteMap[t.syncId];
+        return local != null &&
+            remote != null &&
+            local.isDeleted &&
+            remote.isDeleted;
+      });
 
       final data = _tasksToJson(mergedTasks);
       final uploadSuccess = await _uploadTasksBoth(data);
@@ -286,8 +295,16 @@ class WebDAVService {
     }
   }
 
-  /// 根据同步模式解决冲突
+  /// 根据同步模式解决冲突（含软删除处理）
   Task _resolveConflict(Task local, Task remote, SyncMode mode) {
+    // 软删除优先处理：任一方删除即传播删除
+    if (local.isDeleted || remote.isDeleted) {
+      final deleted = local.isDeleted ? local : remote;
+      deleted.isDeleted = true;
+      return deleted;
+    }
+
+    // 双方都未删除 → 按原有模式处理
     switch (mode) {
       case SyncMode.autoMerge:
         return local.updatedAt.isAfter(remote.updatedAt) ? local : remote;

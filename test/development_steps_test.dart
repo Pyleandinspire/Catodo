@@ -59,20 +59,14 @@ void main() {
   group('步骤二：CatodoIO syncId 导入导出', () {
     test('2.1 导出包含 syncId 字段', () {
       final task = Task(title: '测试', syncId: 'test-sync-123');
-      final json = CatodoIOService.exportCatodo(
-        tasks: [task],
-        settings: {},
-      );
+      final json = CatodoIOService.exportCatodo(tasks: [task], settings: {});
       expect(json.contains('syncId'), true);
       expect(json.contains('test-sync-123'), true);
     });
 
     test('2.2 导入保留 syncId', () {
       final task = Task(title: '测试', syncId: 'test-sync-456');
-      final json = CatodoIOService.exportCatodo(
-        tasks: [task],
-        settings: {},
-      );
+      final json = CatodoIOService.exportCatodo(tasks: [task], settings: {});
       final result = CatodoIOService.importCatodo(json);
       expect(result.tasks.length, 1);
       expect(result.tasks[0].syncId, 'test-sync-456');
@@ -80,10 +74,7 @@ void main() {
 
     test('2.3 导入时 id 重置为 0（追加模式）', () {
       final task = Task(title: '测试', syncId: 'test-sync-789')..id = 999;
-      final json = CatodoIOService.exportCatodo(
-        tasks: [task],
-        settings: {},
-      );
+      final json = CatodoIOService.exportCatodo(tasks: [task], settings: {});
       final result = CatodoIOService.importCatodo(json);
       expect(result.tasks[0].id, 0);
       // syncId 应保留
@@ -328,8 +319,16 @@ END:VCALENDAR''';
   // ============================================================
   group('步骤十二：Filter == 和 hashCode', () {
     test('12.1 相同字段的 Filter 相等', () {
-      final f1 = TaskFilter(selectedGroup: '工作', selectedPriority: 3, selectedTag: '紧急');
-      final f2 = TaskFilter(selectedGroup: '工作', selectedPriority: 3, selectedTag: '紧急');
+      final f1 = TaskFilter(
+        selectedGroup: '工作',
+        selectedPriority: 3,
+        selectedTag: '紧急',
+      );
+      final f2 = TaskFilter(
+        selectedGroup: '工作',
+        selectedPriority: 3,
+        selectedTag: '紧急',
+      );
       expect(f1 == f2, true);
     });
 
@@ -421,6 +420,163 @@ END:VCALENDAR''';
       expect(task.syncId, isNotNull);
       expect(task.title, '测试');
       expect(task.id, isNotNull);
+    });
+  });
+
+  // ============================================================
+  // 方案A：软删除同步传播
+  // ============================================================
+  group('方案A：软删除同步传播', () {
+    final config = WebDAVConfig(
+      url: 'http://localhost',
+      username: 'test',
+      password: 'test',
+    );
+    final service = WebDAVService(config);
+
+    test('A1 本地删除 + 远程未删 → 结果 isDeleted=true（删除传播）', () {
+      final local = Task(title: '测试', syncId: 'sync-a1')
+        ..isDeleted = true
+        ..updatedAt = DateTime(2026, 6, 1);
+      final remote = Task(title: '测试', syncId: 'sync-a1')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 7);
+
+      final result = service.resolveConflictTest(
+        local,
+        remote,
+        SyncMode.autoMerge,
+      );
+      // 删除优先：任一方删除即传播
+      expect(result.isDeleted, true);
+    });
+
+    test('A2 远程删除 + 本地未删 → 结果 isDeleted=true（删除传播）', () {
+      final local = Task(title: '测试', syncId: 'sync-a2')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 7);
+      final remote = Task(title: '测试', syncId: 'sync-a2')
+        ..isDeleted = true
+        ..updatedAt = DateTime(2026, 6, 1);
+
+      final result = service.resolveConflictTest(
+        local,
+        remote,
+        SyncMode.autoMerge,
+      );
+      // 删除优先：远程删除传播到本地
+      expect(result.isDeleted, true);
+    });
+
+    test('A3 双方都删除 → 结果 isDeleted=true', () {
+      final local = Task(title: '测试', syncId: 'sync-a3')
+        ..isDeleted = true
+        ..updatedAt = DateTime(2026, 6, 1);
+      final remote = Task(title: '测试', syncId: 'sync-a3')
+        ..isDeleted = true
+        ..updatedAt = DateTime(2026, 6, 7);
+
+      final result = service.resolveConflictTest(
+        local,
+        remote,
+        SyncMode.autoMerge,
+      );
+      // 双方都删除，结果标记删除
+      expect(result.isDeleted, true);
+    });
+
+    test('A4 双方都未删 → autoMerge 按 updatedAt 处理', () {
+      final local = Task(title: '测试', syncId: 'sync-a4')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 7);
+      final remote = Task(title: '测试', syncId: 'sync-a4')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 1);
+
+      final result = service.resolveConflictTest(
+        local,
+        remote,
+        SyncMode.autoMerge,
+      );
+      // 双方未删除，updatedAt 新的胜出
+      expect(result.isDeleted, false);
+      expect(result.updatedAt, DateTime(2026, 6, 7));
+    });
+
+    test('A5 双方都未删 → localFirst 本地胜出', () {
+      final local = Task(title: '本地', syncId: 'sync-a5')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 1);
+      final remote = Task(title: '远程', syncId: 'sync-a5')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 7);
+
+      final result = service.resolveConflictTest(
+        local,
+        remote,
+        SyncMode.localFirst,
+      );
+      expect(result.title, '本地');
+      expect(result.isDeleted, false);
+    });
+
+    test('A6 双方都未删 → remoteFirst 远程胜出', () {
+      final local = Task(title: '本地', syncId: 'sync-a6')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 7);
+      final remote = Task(title: '远程', syncId: 'sync-a6')
+        ..isDeleted = false
+        ..updatedAt = DateTime(2026, 6, 1);
+
+      final result = service.resolveConflictTest(
+        local,
+        remote,
+        SyncMode.remoteFirst,
+      );
+      expect(result.title, '远程');
+      expect(result.isDeleted, false);
+    });
+  });
+
+  // ============================================================
+  // 方案A：JSON 序列化包含 isDeleted 字段
+  // ============================================================
+  group('方案A：JSON 序列化 isDeleted', () {
+    final config = WebDAVConfig(
+      url: 'http://localhost',
+      username: 'test',
+      password: 'test',
+    );
+    final service = WebDAVService(config);
+
+    test('A7 序列化包含 isDeleted 字段', () {
+      final task = Task(title: '测试', syncId: 'sync-a7')..isDeleted = true;
+      final json = service.tasksToJsonTest([task]);
+      final tasks = json['tasks'] as List;
+      expect(tasks.length, 1);
+      expect((tasks[0] as Map)['isDeleted'], true);
+    });
+
+    test('A8 反序列化保留 isDeleted 字段', () {
+      final json = {
+        'tasks': [
+          {
+            'title': '测试',
+            'syncId': 'sync-a8',
+            'isCompleted': false,
+            'priority': 0,
+            'isDeleted': true,
+            'createdAt': '2026-06-01T00:00:00.000',
+            'updatedAt': '2026-06-07T00:00:00.000',
+            'tags': <String>[],
+            'reminderTimes': <String>[],
+          },
+        ],
+      };
+      final tasks = service.jsonToTasksTest(json);
+      expect(tasks.length, 1);
+      expect(tasks[0].isDeleted, true);
+      expect(tasks[0].syncId, 'sync-a8');
     });
   });
 }
