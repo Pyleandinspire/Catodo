@@ -116,59 +116,159 @@ class ActionResult {
 
 // ==================== 上下文构建器 ====================
 
-/// 构建任务上下文，注入到 LLM 请求中
+/// 每段上限。设置为顶层常量便于测试与未来调参。
+const int _kCtxLimitTodayOverdue = 20;
+const int _kCtxLimitThisWeek = 15;
+const int _kCtxLimitHighPriority = 10;
+const int _kCtxLimitOthers = 15;
+const int _kCtxTitleMaxLen = 50;
+
+/// 构建任务上下文，注入到 LLM 请求中。
+///
+/// 输出按相关性分段（任务概览 / 今日逾期 / 本周内截止 / 高优先级 / 其他活跃），
+/// 每段独立上限，避免任务多于 50 时后段任务被全部丢弃。
+///
+/// [now] 用于划分"今天"和"本周"的时间锚点；未传时取 [DateTime.now]。
+/// 测试时可注入固定值以避免日期依赖。
 @visibleForTesting
-String buildTaskContext(List<Task> tasks) {
+String buildTaskContext(List<Task> tasks, {DateTime? now}) {
   if (tasks.isEmpty) {
     return '【当前任务上下文】\n当前没有活跃任务。';
   }
 
-  final buffer = StringBuffer('【当前任务上下文】\n活跃任务共 ${tasks.length} 个：\n');
+  final anchor = now ?? DateTime.now();
+  final todayStart = DateTime(anchor.year, anchor.month, anchor.day);
+  final todayEnd = todayStart.add(const Duration(days: 1));
+  final weekEnd = todayStart.add(const Duration(days: 7));
 
-  // 最多注入 50 个任务
-  final limitedTasks = tasks.take(50);
+  final todayOrOverdue = <Task>[];
+  final thisWeek = <Task>[];
+  final highPriRest = <Task>[];
+  final others = <Task>[];
 
-  for (final task in limitedTasks) {
-    final priorityLabel = task.priority == 3
-        ? '高'
-        : task.priority == 2
-        ? '中'
-        : task.priority == 1
-        ? '低'
-        : '无';
-    final tagsStr = task.tags.isNotEmpty
-        ? ' | 标签:${task.tags.map((t) => '「$t」').join(',')}'
-        : '';
-    final groupStr = task.groupName != null ? ' | 分组:${task.groupName}' : '';
-    final dueStr = task.dueDate != null
-        ? ' | 截止:${task.dueDate!.toIso8601String().split('T')[0]}'
-        : '';
-
-    buffer.writeln(
-      '- [id:${task.id}] ${task.title} | 优先级:$priorityLabel$groupStr$tagsStr$dueStr',
-    );
-  }
-
-  // 收集所有分组和标签
-  final groups = <String>{};
-  final tags = <String>{};
-  for (final task in tasks) {
-    if (task.groupName != null) groups.add(task.groupName!);
-    for (final tag in task.tags) {
-      if (tag.isNotEmpty) tags.add(tag);
+  for (final t in tasks) {
+    if (t.dueDate != null) {
+      if (t.dueDate!.isBefore(todayEnd)) {
+        todayOrOverdue.add(t);
+        continue;
+      }
+      if (t.dueDate!.isBefore(weekEnd)) {
+        thisWeek.add(t);
+        continue;
+      }
+    }
+    if (t.priority >= 2) {
+      highPriRest.add(t);
+    } else {
+      others.add(t);
     }
   }
 
+  todayOrOverdue.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+  thisWeek.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+  highPriRest.sort((a, b) {
+    final p = b.priority.compareTo(a.priority);
+    if (p != 0) return p;
+    return b.updatedAt.compareTo(a.updatedAt);
+  });
+  others.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+  // 收集所有分组和标签
+  final groups = <String>{};
+  final tagSet = <String>{};
+  for (final task in tasks) {
+    if (task.groupName != null && task.groupName!.isNotEmpty) {
+      groups.add(task.groupName!);
+    }
+    for (final tag in task.tags) {
+      if (tag.isNotEmpty) tagSet.add(tag);
+    }
+  }
+
+  final highPriorityTotal = tasks.where((t) => t.priority >= 2).length;
+
+  final buffer = StringBuffer('【任务概览】\n');
+  buffer.writeln(
+    '活跃任务共 ${tasks.length} 个；今日/逾期 ${todayOrOverdue.length}，'
+    '本周内截止 ${thisWeek.length}，高优先级(≥2) $highPriorityTotal。',
+  );
   if (groups.isNotEmpty) {
     final sortedGroups = groups.toList()..sort();
     buffer.writeln('可用分组: [${sortedGroups.join(', ')}]');
   }
-  if (tags.isNotEmpty) {
-    final sortedTags = tags.toList()..sort();
+  if (tagSet.isNotEmpty) {
+    final sortedTags = tagSet.toList()..sort();
     buffer.writeln('可用标签: [${sortedTags.join(', ')}]');
   }
 
-  return buffer.toString();
+  void writeSection(
+    String title,
+    List<Task> all,
+    int limit, {
+    required bool short,
+  }) {
+    if (all.isEmpty) return;
+    final shown = all.take(limit).toList();
+    final headerCount = shown.length < all.length
+        ? '前 ${shown.length}/${all.length}'
+        : '共 ${all.length}';
+    buffer.writeln();
+    buffer.writeln('【$title】($headerCount)');
+    for (final t in shown) {
+      buffer.writeln(short ? _formatTaskShort(t) : _formatTaskFull(t));
+    }
+  }
+
+  writeSection('今日 / 逾期', todayOrOverdue, _kCtxLimitTodayOverdue, short: false);
+  writeSection('本周内截止', thisWeek, _kCtxLimitThisWeek, short: false);
+  writeSection('高优先级 (≥2)', highPriRest, _kCtxLimitHighPriority, short: false);
+  writeSection('其他活跃任务', others, _kCtxLimitOthers, short: true);
+
+  return buffer.toString().trimRight();
+}
+
+String _formatTaskFull(Task task) {
+  final priorityLabel = _priorityLabel(task.priority);
+  final title = _truncateTitle(task.title);
+  final groupStr = (task.groupName != null && task.groupName!.isNotEmpty)
+      ? ' | 分组:${task.groupName}'
+      : '';
+  final tagsStr = task.tags.isNotEmpty
+      ? ' | 标签:${task.tags.map((t) => '「$t」').join(',')}'
+      : '';
+  final dueStr = task.dueDate != null
+      ? ' | 截止:${_fmtDate(task.dueDate!)}'
+      : '';
+  return '- [id:${task.id}] $title | 优先级:$priorityLabel$groupStr$tagsStr$dueStr';
+}
+
+String _formatTaskShort(Task task) {
+  final priorityLabel = _priorityLabel(task.priority);
+  final title = _truncateTitle(task.title);
+  return '- [id:${task.id}] $title | 优先级:$priorityLabel';
+}
+
+String _priorityLabel(int p) {
+  switch (p) {
+    case 3:
+      return '高';
+    case 2:
+      return '中';
+    case 1:
+      return '低';
+    default:
+      return '无';
+  }
+}
+
+String _truncateTitle(String title) {
+  if (title.length <= _kCtxTitleMaxLen) return title;
+  return '${title.substring(0, _kCtxTitleMaxLen - 1)}…';
+}
+
+String _fmtDate(DateTime d) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${d.year.toString().padLeft(4, '0')}-${two(d.month)}-${two(d.day)}';
 }
 
 // ==================== Action 执行器 ====================

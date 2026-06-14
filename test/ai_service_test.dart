@@ -349,6 +349,64 @@ void main() {
       }
     });
   });
+
+  group('ChatTurn / truncateChatHistory 测试', () {
+    test('ChatTurn.toJson 输出 role+content', () {
+      const turn = ChatTurn.user('你好');
+      expect(turn.toJson(), {'role': 'user', 'content': '你好'});
+      const turn2 = ChatTurn.assistant('收到');
+      expect(turn2.role, 'assistant');
+      expect(turn2.content, '收到');
+    });
+
+    test('truncateChatHistory: 短于上限时原样返回（且为副本）', () {
+      final history = [
+        const ChatTurn.user('a'),
+        const ChatTurn.assistant('b'),
+      ];
+      final out = truncateChatHistory(history, maxTurns: 8);
+      expect(out.length, 2);
+      expect(out, isNot(same(history)));
+      expect(out[0].content, 'a');
+      expect(out[1].content, 'b');
+    });
+
+    test('truncateChatHistory: 超过上限时仅保留最近 maxTurns*2 条', () {
+      // 12 条 message（6 轮），maxTurns=4 → 应保留最近 8 条
+      final history = <ChatTurn>[];
+      for (var i = 0; i < 6; i++) {
+        history.add(ChatTurn.user('u$i'));
+        history.add(ChatTurn.assistant('a$i'));
+      }
+      final out = truncateChatHistory(history, maxTurns: 4);
+      expect(out.length, 8);
+      // 应当从 u2/a2 起到 u5/a5（丢掉前 4 条）
+      expect(out.first.content, 'u2');
+      expect(out.last.content, 'a5');
+    });
+
+    test('truncateChatHistory: 默认 maxTurns=8 时 12 条 → 全留下', () {
+      final history = <ChatTurn>[];
+      for (var i = 0; i < 6; i++) {
+        history.add(ChatTurn.user('u$i'));
+        history.add(ChatTurn.assistant('a$i'));
+      }
+      final out = truncateChatHistory(history);
+      expect(out.length, 12);
+    });
+
+    test('truncateChatHistory: 默认 maxTurns=8 时 20 条 → 留最近 16 条', () {
+      final history = <ChatTurn>[];
+      for (var i = 0; i < 10; i++) {
+        history.add(ChatTurn.user('u$i'));
+        history.add(ChatTurn.assistant('a$i'));
+      }
+      final out = truncateChatHistory(history);
+      expect(out.length, 16);
+      expect(out.first.content, 'u2');
+      expect(out.last.content, 'a9');
+    });
+  });
 }
 
 /// 复制 AIService._parseJsonContent 的逻辑用于测试

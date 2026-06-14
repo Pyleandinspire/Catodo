@@ -194,20 +194,107 @@ void main() {
       expect(context, contains('截止:2026-06-10'));
     });
 
-    test('超过 50 个任务时截断', () {
-      final tasks = List.generate(60, (i) => Task(title: '任务$i', priority: 1)..id = i);
+    test('其他活跃任务段按上限截断', () {
+      // 60 条均为 priority=1、无 dueDate 的任务，全部落到「其他活跃任务」段
+      // 该段上限 15，因此输出应包含 "前 15/60" 而非全部 60 条
+      final tasks =
+          List.generate(60, (i) => Task(title: '任务$i', priority: 1)..id = i);
       final context = buildTaskContext(tasks);
       expect(context, contains('活跃任务共 60 个'));
-      // 不应包含第 51 个任务（id:50）
-      expect(context, isNot(contains('[id:50]')));
-      // 应包含第 50 个任务（id:49）
-      expect(context, contains('[id:49]'));
+      expect(context, contains('其他活跃任务'));
+      expect(context, contains('前 15/60'));
     });
 
     test('活跃任务计数正确', () {
       final tasks = List.generate(3, (i) => Task(title: '任务$i', priority: 1)..id = i);
       final context = buildTaskContext(tasks);
       expect(context, contains('活跃任务共 3 个'));
+    });
+
+    test('分段：今日/逾期/本周/高优/其他 各段都出现', () {
+      final now = DateTime(2026, 6, 15, 10);
+      final tasks = <Task>[
+        // 今日/逾期：5 条（含一条已逾期）
+        for (var i = 0; i < 4; i++)
+          Task(title: '今日$i', priority: 1)
+            ..id = 100 + i
+            ..dueDate = DateTime(2026, 6, 15, 14 + i),
+        Task(title: '逾期1', priority: 1)
+          ..id = 109
+          ..dueDate = DateTime(2026, 6, 13),
+        // 本周内：3 条
+        for (var i = 0; i < 3; i++)
+          Task(title: '本周$i', priority: 1)
+            ..id = 200 + i
+            ..dueDate = DateTime(2026, 6, 17 + i),
+        // 高优先级（无 dueDate）：2 条
+        for (var i = 0; i < 2; i++)
+          Task(title: '高优$i', priority: 3)..id = 300 + i,
+        // 其他活跃：4 条
+        for (var i = 0; i < 4; i++)
+          Task(title: '其他$i', priority: 1)..id = 400 + i,
+      ];
+      final ctx = buildTaskContext(tasks, now: now);
+      expect(ctx, contains('今日 / 逾期'));
+      expect(ctx, contains('本周内截止'));
+      expect(ctx, contains('高优先级 (≥2)'));
+      expect(ctx, contains('其他活跃任务'));
+      expect(ctx, contains('共 5'), reason: '今日/逾期段共 5 条');
+      expect(ctx, contains('共 3'), reason: '本周内段共 3 条');
+      expect(ctx, contains('共 2'), reason: '高优先级段共 2 条');
+      expect(ctx, contains('共 4'), reason: '其他活跃段共 4 条');
+    });
+
+    test('头部汇总数字正确（含今日/逾期、本周、高优计数）', () {
+      final now = DateTime(2026, 6, 15, 10);
+      final tasks = <Task>[
+        Task(title: '今日a', priority: 3)
+          ..id = 1
+          ..dueDate = DateTime(2026, 6, 15, 14),
+        Task(title: '本周b', priority: 1)
+          ..id = 2
+          ..dueDate = DateTime(2026, 6, 18),
+        Task(title: '本周c', priority: 2)
+          ..id = 3
+          ..dueDate = DateTime(2026, 6, 19),
+        Task(title: '高优d', priority: 2)..id = 4,
+        Task(title: '低优e', priority: 0)..id = 5,
+      ];
+      final ctx = buildTaskContext(tasks, now: now);
+      expect(ctx, contains('活跃任务共 5 个'));
+      expect(ctx, contains('今日/逾期 1'));
+      expect(ctx, contains('本周内截止 2'));
+      // 高优(≥2) 总数 = 今日 1 + 本周 1 + 高优段 1 = 3
+      expect(ctx, contains('高优先级(≥2) 3'));
+    });
+
+    test('过长标题被截断到 50 字符以内', () {
+      final longTitle = '长' * 80;
+      final task = Task(title: longTitle, priority: 3)..id = 1;
+      final ctx = buildTaskContext([task]);
+      // 输出中含截断符 …
+      expect(ctx, contains('…'));
+      // 任意一行最多 50 个 '长' 字符（49 个 + 1 个 …）
+      final hasOverlong = RegExp('长{51,}').hasMatch(ctx);
+      expect(hasOverlong, isFalse);
+    });
+
+    test('注入时间锚点：相对今日的任务被正确归类', () {
+      final now = DateTime(2026, 1, 10);
+      final t1 = Task(title: '今日', priority: 1)
+        ..id = 1
+        ..dueDate = DateTime(2026, 1, 10, 18);
+      final t2 = Task(title: '后天', priority: 1)
+        ..id = 2
+        ..dueDate = DateTime(2026, 1, 12);
+      final t3 = Task(title: '下月', priority: 1)
+        ..id = 3
+        ..dueDate = DateTime(2026, 2, 20);
+      final ctx = buildTaskContext([t1, t2, t3], now: now);
+      // 1 → 今日；2 → 本周内；3 → 落到「其他活跃任务」
+      expect(ctx, contains('今日 / 逾期'));
+      expect(ctx, contains('本周内截止'));
+      expect(ctx, contains('其他活跃任务'));
     });
   });
 

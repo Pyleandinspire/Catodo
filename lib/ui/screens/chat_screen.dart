@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../services/ai_service.dart';
 import '../../services/ai_agent.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/isar_provider.dart';
+import '../../providers/chat_provider.dart';
 import '../../data/task_dao.dart';
-import '../../models/task.dart';
+import '../../data/chat_message_dao.dart';
+import '../../models/chat_message_entity.dart';
 
+/// 聊天页 — 已迁到 Isar 持久化（PLAN-AI-001-5）。
+///
+/// - 历史 / 多轮记忆来自 [chatMessagesProvider]，跨切页与重启都保留；
+/// - AIService 来自 [aiServiceProvider]，避免旧的 fire-and-forget 加载竞态；
+/// - 待确认 actions 仍在内存（[_pending]），重启即过期，避免 taskId 失效误执行。
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
@@ -16,53 +21,27 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
+  static const int _sessionId = ChatMessageDao.defaultSessionId;
+  static const int _historyMaxFromDb = 200;
+
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
-  final List<ChatMessage> _messages = [];
-  bool _isLoading = false;
-  AIService? _aiService;
 
-  @override
-  void initState() {
-    super.initState();
-    _initAIService();
-    _messages.add(
-      ChatMessage(
-        isUser: false,
-        text:
-            '你好！我是 AI 助手，可以直接帮你管理任务：\n'
-            '1. 创建任务 - "帮我创建一个高优先级任务：完成报告"\n'
-            '2. 分解任务 - "分解任务「学习 Flutter」"\n'
-            '3. 调整优先级 - "把任务「买牛奶」设为低优先级"\n'
-            '4. 加标签/分组 - "给任务加标签「紧急」"\n'
-            '5. 完成/删除 - "完成任务「买牛奶」"\n'
-            '6. 自由对话 - 直接输入你的问题',
-      ),
-    );
-  }
+  /// 待确认 actions 队列（仅内存，不入库）。每组对应一次模型回复带出的待确认操作。
+  final List<List<AgentAction>> _pending = [];
 
-  Future<void> _initAIService() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final apiKey = prefs.getString('ai_api_key') ?? '';
-      final apiUrl = prefs.getString('ai_api_url') ?? '';
-      final model = prefs.getString('ai_model') ?? '';
-      final providerId = prefs.getString('ai_provider_id') ?? 'custom';
+  bool _isSending = false;
 
-      if (apiKey.isNotEmpty && apiUrl.isNotEmpty && model.isNotEmpty) {
-        _aiService = AIService(
-          AIConfig(
-            providerId: providerId,
-            apiKey: apiKey,
-            apiUrl: apiUrl,
-            modelName: model,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Failed to initialize AI service: $e');
-    }
-  }
+  static const String _welcomeText =
+      '你好！我是 AI 助手，可以直接帮你管理任务：\n'
+      '1. 创建任务 - "帮我创建一个高优先级任务：完成报告"\n'
+      '2. 分解任务 - "分解任务「学习 Flutter」"\n'
+      '3. 调整优先级 - "把任务「买牛奶」设为低优先级"\n'
+      '4. 加标签/分组 - "给任务加标签「紧急」"\n'
+      '5. 完成/删除 - "完成任务「买牛奶」"\n'
+      '6. 自由对话 - 直接输入你的问题';
+
+  static const String _pendingHint = '未确认的操作仅在本次会话有效，关闭或切走即过期。';
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -76,111 +55,125 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  Future<void> _appendDb({
+    required String role,
+    required String content,
+    bool visibleToModel = true,
+  }) async {
+    final dao = ref.read(chatMessageDaoProvider);
+    await dao.append(ChatMessageEntity.now(
+      sessionId: _sessionId,
+      role: role,
+      content: content,
+      visibleToModel: visibleToModel,
+    ));
+  }
+
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isSending) return;
 
     _messageController.clear();
-    setState(() => _messages.add(ChatMessage(isUser: true, text: text)));
+
+    // 立刻把 user 消息入库；UI 由 streamProvider 自动刷新
+    await _appendDb(role: 'user', content: text);
     _scrollToBottom();
 
-    if (_aiService == null) {
-      setState(
-        () => _messages.add(
-          ChatMessage(isUser: false, text: '请先在设置中配置 AI 助手的 API 参数。'),
-        ),
+    // 取 AIService（FutureProvider，已配置时会立刻同步取到值）
+    final aiAsync = ref.read(aiServiceProvider);
+    final ai = aiAsync.valueOrNull;
+    if (ai == null) {
+      // 加载中或未配置：以 UI 提示告知，不入模型上下文
+      await _appendDb(
+        role: 'assistant',
+        content: aiAsync.isLoading
+            ? '正在加载 AI 配置，请稍候再发送…'
+            : '请先在设置中配置 AI 助手的 API 参数。',
+        visibleToModel: false,
       );
       _scrollToBottom();
       return;
     }
 
-    setState(() => _isLoading = true);
-
+    setState(() => _isSending = true);
     try {
-      // 构建任务上下文
-      final tasksAsync = ref.read(activeTasksProvider);
-      final tasks = tasksAsync.valueOrNull ?? [];
+      // 任务上下文
+      final tasks = ref.read(activeTasksProvider).valueOrNull ?? const [];
       final context = buildTaskContext(tasks);
 
-      // 调用 Agent
-      final response = await _aiService!.requestAgentAction(
-        userMessage: text,
+      // 多轮历史从持久化派生（不含本轮 user，因为 ChatTurn 由 latestUserMessage 单独传）
+      final messagesNow = ref.read(chatMessagesProvider).valueOrNull ?? const [];
+      // 排除本轮自身：本轮 user 已经写库且会出现在 messagesNow 末尾
+      final priorMessages = messagesNow.isNotEmpty
+          ? messagesNow.sublist(0, messagesNow.length - 1)
+          : const <ChatMessageEntity>[];
+      final history = messagesToTurns(priorMessages);
+
+      final response = await ai.requestAgentActionWithHistory(
+        history: history,
+        latestUserMessage: text,
         context: context,
       );
 
-      // 分离需要确认和自动执行的 actions
+      // 拆分自动 / 待确认
       final autoActions = <AgentAction>[];
       final confirmActions = <AgentAction>[];
-
-      for (final action in response.actions) {
-        if (action.needsConfirmation) {
-          confirmActions.add(action);
+      for (final a in response.actions) {
+        if (a.needsConfirmation) {
+          confirmActions.add(a);
         } else {
-          autoActions.add(action);
+          autoActions.add(a);
         }
       }
 
-      // 自动执行低风险操作
+      // 自动执行
       final autoResults = <ActionResult>[];
       if (autoActions.isNotEmpty) {
-        final isarAsync = ref.read(isarProvider);
-        final isar = isarAsync.valueOrNull;
+        final isar = ref.read(isarProvider).valueOrNull;
         if (isar != null) {
           final dao = TaskDao(isar);
           for (final action in autoActions) {
-            final result = await executeAction(action, dao);
-            autoResults.add(result);
+            autoResults.add(await executeAction(action, dao));
           }
         }
       }
 
-      // 构建回复消息
+      // 拼接回复 + 自动结果
       final replyBuffer = StringBuffer(response.reply);
-
-      // 附加自动执行结果
-      for (final result in autoResults) {
-        if (result.success) {
-          replyBuffer.write('\n\n✓ ${result.message}');
-        } else {
-          replyBuffer.write('\n\n✗ ${result.message}');
-        }
+      for (final r in autoResults) {
+        replyBuffer.write(r.success ? '\n\n✓ ${r.message}' : '\n\n✗ ${r.message}');
       }
+      final assistantText = replyBuffer.toString();
+      await _appendDb(
+        role: 'assistant',
+        content: assistantText.isEmpty ? '(无内容)' : assistantText,
+      );
 
-      setState(() {
-        _messages.add(ChatMessage(isUser: false, text: replyBuffer.toString()));
-      });
-
-      // 需要确认的操作显示确认卡片
+      // 待确认 actions 进内存队列
       if (confirmActions.isNotEmpty) {
-        setState(() {
-          _messages.add(
-            ChatMessage(
-              isUser: false,
-              text: '',
-              pendingActions: confirmActions,
-            ),
-          );
-        });
+        setState(() => _pending.add(confirmActions));
       }
-
       _scrollToBottom();
     } catch (e) {
-      setState(
-        () => _messages.add(ChatMessage(isUser: false, text: '抱歉，发生错误：$e')),
+      await _appendDb(
+        role: 'assistant',
+        content: '抱歉，发生错误：$e',
+        visibleToModel: false,
       );
       _scrollToBottom();
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSending = false);
       _scrollToBottom();
     }
   }
 
   Future<void> _confirmActions(List<AgentAction> actions) async {
-    final isarAsync = ref.read(isarProvider);
-    final isar = isarAsync.valueOrNull;
+    final isar = ref.read(isarProvider).valueOrNull;
     if (isar == null) {
-      setState(
-        () => _messages.add(ChatMessage(isUser: false, text: '数据库未就绪，请稍后再试。')),
+      await _appendDb(
+        role: 'assistant',
+        content: '数据库未就绪，请稍后再试。',
+        visibleToModel: false,
       );
       _scrollToBottom();
       return;
@@ -188,30 +181,61 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final dao = TaskDao(isar);
     final results = <ActionResult>[];
-
-    for (final action in actions) {
-      final result = await executeAction(action, dao);
-      results.add(result);
+    for (final a in actions) {
+      results.add(await executeAction(a, dao));
     }
 
-    final buffer = StringBuffer('已执行操作：\n');
-    for (final result in results) {
-      buffer.writeln(
-        result.success ? '✓ ${result.message}' : '✗ ${result.message}',
-      );
+    final buf = StringBuffer('已执行操作：\n');
+    for (final r in results) {
+      buf.writeln(r.success ? '✓ ${r.message}' : '✗ ${r.message}');
     }
+    await _appendDb(role: 'system_summary', content: buf.toString());
 
-    setState(() {
-      _messages.add(ChatMessage(isUser: false, text: buffer.toString()));
-    });
+    setState(() => _pending.remove(actions));
     _scrollToBottom();
   }
 
-  void _cancelActions() {
-    setState(() {
-      _messages.add(ChatMessage(isUser: false, text: '已取消操作。'));
-    });
+  Future<void> _cancelActions(List<AgentAction> actions) async {
+    await _appendDb(
+      role: 'assistant',
+      content: '已取消操作。',
+      visibleToModel: false,
+    );
+    setState(() => _pending.remove(actions));
     _scrollToBottom();
+  }
+
+  Future<void> _confirmClearConversation() async {
+    final dao = ref.read(chatMessageDaoProvider);
+    final hasAny = (await dao.count(sessionId: _sessionId)) > 0;
+    final hasPending = _pending.isNotEmpty;
+    if (!hasAny && !hasPending) {
+      return; // 本来就空
+    }
+
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空对话'),
+        content: const Text('清空当前对话历史与多轮记忆，欢迎语保留。是否继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await dao.clearSession(sessionId: _sessionId);
+      if (mounted) setState(() => _pending.clear());
+      _scrollToBottom();
+    }
   }
 
   @override
@@ -223,108 +247,176 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final messagesAsync = ref.watch(chatMessagesProvider);
+
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // 头部
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'AI 助手',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: _showQuickActions,
-                        icon: const Icon(Icons.auto_awesome, size: 18),
-                        label: const Text('快捷操作'),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    '智能任务管理 Agent',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
-                  ),
-                ],
-              ),
-            ),
-
-            // 聊天区域
+            _buildHeader(messagesAsync.valueOrNull ?? const []),
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _messages.length + (_isLoading ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == _messages.length && _isLoading) {
-                    return _buildLoadingBubble();
-                  }
-                  return _buildMessageBubble(_messages[index]);
-                },
+              child: messagesAsync.when(
+                data: (msgs) => _buildList(msgs),
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('加载消息失败: $e')),
               ),
             ),
-
-            // 输入区域
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: _messageController,
-                        onSubmitted: (_) => _sendMessage(),
-                        decoration: const InputDecoration(
-                          hintText: '输入消息...',
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: _isLoading ? null : _sendMessage,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: _isLoading ? Colors.grey : Colors.black,
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(24),
-                        ),
-                      ),
-                      child: _isLoading
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.send, color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _buildComposer(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(List<ChatMessageEntity> msgs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'AI 助手',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: '清空对话',
+                    onPressed: _isSending ? null : _confirmClearConversation,
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                    color: Colors.black54,
+                  ),
+                  TextButton.icon(
+                    onPressed: _showQuickActions,
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('快捷操作'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const Text(
+            '智能任务管理 Agent',
+            style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildList(List<ChatMessageEntity> msgs) {
+    final isEmpty = msgs.isEmpty;
+    // 截断到最近 N 条参与渲染（与 DAO 上限保持一致，作为防御）
+    final shown = msgs.length > _historyMaxFromDb
+        ? msgs.sublist(msgs.length - _historyMaxFromDb)
+        : msgs;
+
+    final itemCount = (isEmpty ? 1 : shown.length) +
+        _pending.length +
+        (_pending.isNotEmpty ? 1 : 0) + // pending 提示行
+        (_isSending ? 1 : 0);
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: itemCount,
+      itemBuilder: (ctx, index) {
+        // 1) 历史区
+        final histLen = isEmpty ? 1 : shown.length;
+        if (index < histLen) {
+          if (isEmpty) {
+            return _buildBubble(isUser: false, text: _welcomeText);
+          }
+          final m = shown[index];
+          return _buildBubble(
+            isUser: m.role == 'user',
+            text: m.content,
+            isSystem: m.role == 'system_summary',
+          );
+        }
+
+        var cursor = histLen;
+
+        // 2) 待确认提示行 + 卡片们
+        if (_pending.isNotEmpty) {
+          if (index == cursor) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Text(
+                _pendingHint,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF9E9E9E)),
+              ),
+            );
+          }
+          cursor += 1;
+          final pendingIdx = index - cursor;
+          if (pendingIdx >= 0 && pendingIdx < _pending.length) {
+            return _buildConfirmationCard(_pending[pendingIdx]);
+          }
+          cursor += _pending.length;
+        }
+
+        // 3) 加载气泡
+        if (_isSending && index == cursor) {
+          return _buildLoadingBubble();
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _buildComposer() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(24),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _messageController,
+                onSubmitted: (_) => _sendMessage(),
+                decoration: const InputDecoration(
+                  hintText: '输入消息...',
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _isSending ? null : _sendMessage,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: _isSending ? Colors.grey : Colors.black,
+                borderRadius: const BorderRadius.all(Radius.circular(24)),
+              ),
+              child: _isSending
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.send, color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -370,39 +462,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message) {
-    // 确认卡片
-    if (message.pendingActions != null && message.pendingActions!.isNotEmpty) {
-      return _buildConfirmationCard(message.pendingActions!);
-    }
+  Widget _buildBubble({
+    required bool isUser,
+    required String text,
+    bool isSystem = false,
+  }) {
+    final bg = isUser
+        ? Colors.black
+        : isSystem
+            ? const Color(0xFFEEF6EE)
+            : const Color(0xFFF5F5F5);
+    final fg = isUser ? Colors.white : Colors.black87;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Align(
-        alignment: message.isUser
-            ? Alignment.centerRight
-            : Alignment.centerLeft,
+        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.8,
           ),
           decoration: BoxDecoration(
-            color: message.isUser ? Colors.black : const Color(0xFFF5F5F5),
+            color: bg,
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(16),
               topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(message.isUser ? 16 : 0),
-              bottomRight: Radius.circular(message.isUser ? 0 : 16),
+              bottomLeft: Radius.circular(isUser ? 16 : 0),
+              bottomRight: Radius.circular(isUser ? 0 : 16),
             ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              message.text,
-              style: TextStyle(
-                color: message.isUser ? Colors.white : Colors.black87,
-                fontSize: 14,
-              ),
+              text,
+              style: TextStyle(color: fg, fontSize: 14),
             ),
           ),
         ),
@@ -465,7 +558,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: _cancelActions,
+                    onPressed: () => _cancelActions(actions),
                     child: const Text('取消'),
                   ),
                   const SizedBox(width: 8),
@@ -557,13 +650,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showTaskPicker(String actionType) {
-    final tasksAsync = ref.read(activeTasksProvider);
-    final tasks = tasksAsync.valueOrNull ?? [];
-
+    final tasks = ref.read(activeTasksProvider).valueOrNull ?? const [];
     if (tasks.isEmpty) {
-      setState(
-        () =>
-            _messages.add(ChatMessage(isUser: false, text: '当前没有可用任务，请先创建任务。')),
+      _appendDb(
+        role: 'assistant',
+        content: '当前没有可用任务，请先创建任务。',
+        visibleToModel: false,
       );
       _scrollToBottom();
       return;
@@ -634,12 +726,4 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
     );
   }
-}
-
-class ChatMessage {
-  final bool isUser;
-  final String text;
-  final List<AgentAction>? pendingActions;
-
-  ChatMessage({required this.isUser, required this.text, this.pendingActions});
 }

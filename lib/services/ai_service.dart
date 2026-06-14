@@ -23,6 +23,37 @@ class AIConfig {
   LLMProvider get provider => LLMProviderRegistry.getById(providerId);
 }
 
+/// 单轮聊天消息（用于多轮上下文记忆）
+///
+/// `role` 限定为 `'user'` 或 `'assistant'`；`'system'` 由 [AIService] 内部拼装，
+/// 调用方不应在 history 中放 system 角色。
+class ChatTurn {
+  final String role;
+  final String content;
+
+  const ChatTurn({required this.role, required this.content});
+
+  const ChatTurn.user(String content) : this(role: 'user', content: content);
+  const ChatTurn.assistant(String content)
+    : this(role: 'assistant', content: content);
+
+  Map<String, dynamic> toJson() => {'role': role, 'content': content};
+}
+
+/// 截断聊天历史，仅保留最近 [maxTurns] 轮（一轮 = 一条 user + 一条 assistant，约 2 条 message）。
+///
+/// 现阶段以 message 数量近似（保留 `maxTurns * 2` 条），日后可改为按 token 估算。
+/// 始终从最早的一端丢弃，以确保保留到最近的上下文。
+@visibleForTesting
+List<ChatTurn> truncateChatHistory(
+  List<ChatTurn> history, {
+  int maxTurns = 8,
+}) {
+  final maxMessages = maxTurns * 2;
+  if (history.length <= maxMessages) return List.of(history);
+  return history.sublist(history.length - maxMessages);
+}
+
 /// 连接测试结果
 class ConnectionTestResult {
   final bool success;
@@ -123,18 +154,22 @@ class AIService {
   Future<Map<String, dynamic>?> requestStructuredOutput({
     required String systemPrompt,
     required String userPrompt,
+    List<ChatTurn> history = const [],
   }) async {
     try {
+      final messages = <Map<String, dynamic>>[
+        {
+          'role': 'system',
+          'content':
+              '$systemPrompt\n\n【重要】你必须只返回纯 JSON 格式，不要包含任何 markdown 代码块标记（如 ```json ```）或其他非 JSON 内容。',
+        },
+        for (final t in history) t.toJson(),
+        {'role': 'user', 'content': userPrompt},
+      ];
+
       final data = <String, dynamic>{
         'model': config.modelName,
-        'messages': [
-          {
-            'role': 'system',
-            'content':
-                '$systemPrompt\n\n【重要】你必须只返回纯 JSON 格式，不要包含任何 markdown 代码块标记（如 ```json ```）或其他非 JSON 内容。',
-          },
-          {'role': 'user', 'content': userPrompt},
-        ],
+        'messages': messages,
         'temperature': _provider.defaultTemperature,
       };
 
@@ -462,11 +497,28 @@ class AIService {
     required String userMessage,
     required String context,
   }) async {
+    return requestAgentActionWithHistory(
+      latestUserMessage: userMessage,
+      context: context,
+      history: const [],
+    );
+  }
+
+  /// 多轮版本：在 system 之外携带最近若干轮对话历史。
+  ///
+  /// [history] 必须只包含 user/assistant 角色，调用前可经 [truncateChatHistory] 截断。
+  Future<AgentResponse> requestAgentActionWithHistory({
+    required List<ChatTurn> history,
+    required String latestUserMessage,
+    required String context,
+  }) async {
     final systemPrompt = '$kAgentSystemPrompt\n\n$context';
+    final trimmed = truncateChatHistory(history);
 
     final result = await requestStructuredOutput(
       systemPrompt: systemPrompt,
-      userPrompt: userMessage,
+      userPrompt: latestUserMessage,
+      history: trimmed,
     );
 
     if (result == null) {
