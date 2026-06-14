@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/chat_message_dao.dart';
 import '../models/chat_message_entity.dart';
 import '../services/ai_service.dart';
+import '../services/secure_store.dart';
 import 'isar_provider.dart';
 
 /// ChatMessageDao 依赖 isarProvider 就绪后的 Isar 实例。
@@ -20,14 +21,13 @@ final chatMessagesProvider =
   yield* dao.watchRecent();
 });
 
-/// 从 SharedPreferences 加载 AIService。
+/// 从 SecureStore + SharedPreferences 加载 AIService。
 ///
 /// 配置不完整时返回 null，UI 层需引导用户进入设置。
-/// PLAN-AI-001-2 落地后 apiKey 读取将切到 SecureStore。
 final aiServiceProvider = FutureProvider<AIService?>((ref) async {
   try {
     final prefs = await SharedPreferences.getInstance();
-    final apiKey = prefs.getString('ai_api_key') ?? '';
+    final apiKey = await SecureStore.instance.readAiApiKey() ?? '';
     final apiUrl = prefs.getString('ai_api_url') ?? '';
     final model = prefs.getString('ai_model') ?? '';
     final providerId = prefs.getString('ai_provider_id') ?? 'custom';

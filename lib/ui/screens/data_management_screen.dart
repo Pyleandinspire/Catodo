@@ -8,6 +8,7 @@ import '../../providers/isar_provider.dart';
 import '../../data/task_dao.dart';
 import '../../services/ics_service.dart';
 import '../../services/catodo_io_service.dart';
+import '../../services/secure_store.dart';
 
 /// 数据导入/导出公共逻辑（提供给页面与按钮共用）。
 class DataIoActions {
@@ -157,19 +158,24 @@ class DataIoActions {
       }
 
       final prefs = await SharedPreferences.getInstance();
+      // 敏感字段从 SecureStore 读取
+      final webdavPassword = includeSensitive
+          ? (await SecureStore.instance.readWebDavPassword() ?? '')
+          : '';
+      final aiApiKey = includeSensitive
+          ? (await SecureStore.instance.readAiApiKey() ?? '')
+          : '';
       final settings = {
         'webdav': {
           'url': prefs.getString('webdav_url') ?? '',
           'username': prefs.getString('webdav_username') ?? '',
-          if (includeSensitive)
-            'password': prefs.getString('webdav_password') ?? '',
+          if (includeSensitive) 'password': webdavPassword,
         },
         'ai': {
           'provider': prefs.getString('ai_provider_id') ?? 'custom',
           'apiUrl': prefs.getString('ai_api_url') ?? '',
           'model': prefs.getString('ai_model') ?? '',
-          if (includeSensitive)
-            'apiKey': prefs.getString('ai_api_key') ?? '',
+          if (includeSensitive) 'apiKey': aiApiKey,
         },
       };
 

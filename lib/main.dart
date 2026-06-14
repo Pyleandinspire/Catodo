@@ -13,6 +13,7 @@ import 'ui/screens/chat_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/components/adaptive_navigation.dart';
 import 'services/notification_service.dart';
+import 'services/secrets_migration.dart';
 import 'providers/isar_provider.dart';
 import 'data/task_dao.dart';
 
@@ -73,6 +74,9 @@ void main() {
 }
 
 Future<void> _initializeServices() async {
+  // 一次性迁移旧 SP 明文凭据到 SecureStore（失败也不阻塞启动）
+  await migrateLegacySecretsIfNeeded();
+
   // 请求通知权限（Android 13+ 需要运行时权限）
   try {
     await Permission.notification.request();

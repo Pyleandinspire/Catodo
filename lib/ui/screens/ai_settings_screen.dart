@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/ai_service.dart';
 import '../../services/llm_provider_registry.dart';
+import '../../services/secure_store.dart';
 
 class AISettingsScreen extends ConsumerStatefulWidget {
   const AISettingsScreen({super.key});
@@ -31,7 +32,8 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     _selectedProviderId = prefs.getString('ai_provider_id') ?? 'custom';
-    _apiKeyController.text = prefs.getString('ai_api_key') ?? '';
+    _apiKeyController.text =
+        await SecureStore.instance.readAiApiKey() ?? '';
     _apiUrlController.text = prefs.getString('ai_api_url') ?? '';
     _modelController.text = prefs.getString('ai_model') ?? '';
 
@@ -93,9 +95,12 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   Future<void> _saveConfig() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('ai_provider_id', _selectedProviderId);
-    await prefs.setString('ai_api_key', _apiKeyController.text.trim());
+    await SecureStore.instance.writeAiApiKey(_apiKeyController.text.trim());
     await prefs.setString('ai_api_url', _apiUrlController.text.trim());
     await prefs.setString('ai_model', _modelController.text.trim());
+
+    // 旧明文 key 若仍残留，主动清掉一次（双保险，迁移漏掉时兜底）
+    await prefs.remove('ai_api_key');
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

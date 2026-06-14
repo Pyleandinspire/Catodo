@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/ai_agent.dart';
+import '../../services/ai_service.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/isar_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../data/task_dao.dart';
 import '../../data/chat_message_dao.dart';
 import '../../models/chat_message_entity.dart';
+import 'ai_settings_screen.dart';
 
 /// 聊天页 — 已迁到 Isar 持久化（PLAN-AI-001-5）。
 ///
@@ -29,6 +31,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   /// 待确认 actions 队列（仅内存，不入库）。每组对应一次模型回复带出的待确认操作。
   final List<List<AgentAction>> _pending = [];
+
+  /// 最近一次失败信息（仅 UI 提示，不入库）。点击重试 / 修复后清空。
+  AiCallError? _lastError;
+  String? _lastUserMessage; // 用于"重试"
 
   bool _isSending = false;
 
@@ -69,11 +75,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ));
   }
 
-  Future<void> _sendMessage() async {
-    final text = _messageController.text.trim();
+  Future<void> _sendMessage({String? overrideText}) async {
+    final text = (overrideText ?? _messageController.text).trim();
     if (text.isEmpty || _isSending) return;
 
-    _messageController.clear();
+    if (overrideText == null) {
+      _messageController.clear();
+    }
+    setState(() => _lastError = null);
+    _lastUserMessage = text;
 
     // 立刻把 user 消息入库；UI 由 streamProvider 自动刷新
     await _appendDb(role: 'user', content: text);
@@ -103,17 +113,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       // 多轮历史从持久化派生（不含本轮 user，因为 ChatTurn 由 latestUserMessage 单独传）
       final messagesNow = ref.read(chatMessagesProvider).valueOrNull ?? const [];
-      // 排除本轮自身：本轮 user 已经写库且会出现在 messagesNow 末尾
       final priorMessages = messagesNow.isNotEmpty
           ? messagesNow.sublist(0, messagesNow.length - 1)
           : const <ChatMessageEntity>[];
       final history = messagesToTurns(priorMessages);
 
-      final response = await ai.requestAgentActionWithHistory(
+      final r = await ai.requestAgentActionDetailedWithHistory(
         history: history,
         latestUserMessage: text,
         context: context,
       );
+
+      // 错误优先：UI 在底部展示分级提示卡，并把简短摘要写入历史以便复盘
+      if (r.error != null) {
+        await _appendDb(
+          role: 'assistant',
+          content: '⚠️ ${r.error!.message}',
+          visibleToModel: false,
+        );
+        if (mounted) setState(() => _lastError = r.error);
+        return;
+      }
+
+      final response = r.response;
 
       // 拆分自动 / 待确认
       final autoActions = <AgentAction>[];
@@ -140,8 +162,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       // 拼接回复 + 自动结果
       final replyBuffer = StringBuffer(response.reply);
-      for (final r in autoResults) {
-        replyBuffer.write(r.success ? '\n\n✓ ${r.message}' : '\n\n✗ ${r.message}');
+      for (final ar in autoResults) {
+        replyBuffer.write(ar.success ? '\n\n✓ ${ar.message}' : '\n\n✗ ${ar.message}');
       }
       final assistantText = replyBuffer.toString();
       await _appendDb(
@@ -233,7 +255,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     if (ok == true) {
       await dao.clearSession(sessionId: _sessionId);
-      if (mounted) setState(() => _pending.clear());
+      if (mounted) {
+        setState(() {
+          _pending.clear();
+          _lastError = null;
+        });
+      }
       _scrollToBottom();
     }
   }
@@ -321,6 +348,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final itemCount = (isEmpty ? 1 : shown.length) +
         _pending.length +
         (_pending.isNotEmpty ? 1 : 0) + // pending 提示行
+        (_lastError != null ? 1 : 0) +   // 错误卡
         (_isSending ? 1 : 0);
 
     return ListView.builder(
@@ -363,7 +391,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           cursor += _pending.length;
         }
 
-        // 3) 加载气泡
+        // 3) 错误卡（最近一次）
+        if (_lastError != null && index == cursor) {
+          return _buildErrorCard(_lastError!);
+        }
+        if (_lastError != null) cursor += 1;
+
+        // 4) 加载气泡
         if (_isSending && index == cursor) {
           return _buildLoadingBubble();
         }
@@ -501,6 +535,164 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildErrorCard(AiCallError err) {
+    final color = _errorColor(err.type);
+    final action = _errorAction(err);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Card(
+        color: color.withAlpha(30),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: color),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(_errorIcon(err.type), color: color, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      err.message,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭提示',
+                    iconSize: 18,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => setState(() => _lastError = null),
+                    icon: const Icon(Icons.close, color: Colors.black54),
+                  ),
+                ],
+              ),
+              if (err.detail != null && err.detail!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  err.detail!,
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: action == null
+                    ? [const SizedBox.shrink()]
+                    : [
+                        TextButton.icon(
+                          onPressed: action.onTap,
+                          icon: Icon(action.icon, size: 16),
+                          label: Text(action.label),
+                          style: TextButton.styleFrom(foregroundColor: color),
+                        ),
+                      ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _errorColor(AiErrorType t) {
+    switch (t) {
+      case AiErrorType.unauthorized:
+      case AiErrorType.forbidden:
+        return Colors.red.shade700;
+      case AiErrorType.notFound:
+      case AiErrorType.badRequest:
+      case AiErrorType.parseFailed:
+        return Colors.orange.shade700;
+      case AiErrorType.rateLimited:
+      case AiErrorType.timeout:
+      case AiErrorType.network:
+        return Colors.blueGrey.shade700;
+      case AiErrorType.serverError:
+      case AiErrorType.unknown:
+        return Colors.deepPurple.shade400;
+    }
+  }
+
+  IconData _errorIcon(AiErrorType t) {
+    switch (t) {
+      case AiErrorType.unauthorized:
+      case AiErrorType.forbidden:
+        return Icons.lock_outline;
+      case AiErrorType.notFound:
+      case AiErrorType.badRequest:
+        return Icons.link_off;
+      case AiErrorType.parseFailed:
+        return Icons.code_off;
+      case AiErrorType.rateLimited:
+        return Icons.hourglass_top;
+      case AiErrorType.timeout:
+      case AiErrorType.network:
+        return Icons.wifi_off;
+      case AiErrorType.serverError:
+        return Icons.cloud_off;
+      case AiErrorType.unknown:
+        return Icons.error_outline;
+    }
+  }
+
+  _ErrorAction? _errorAction(AiCallError err) {
+    switch (err.type) {
+      case AiErrorType.unauthorized:
+      case AiErrorType.forbidden:
+      case AiErrorType.notFound:
+      case AiErrorType.badRequest:
+        return _ErrorAction(
+          label: '前往设置',
+          icon: Icons.settings,
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AISettingsScreen()),
+            );
+            // 设置回来后让 aiServiceProvider 重新读
+            ref.invalidate(aiServiceProvider);
+            if (mounted) setState(() => _lastError = null);
+          },
+        );
+      case AiErrorType.network:
+      case AiErrorType.timeout:
+      case AiErrorType.rateLimited:
+      case AiErrorType.serverError:
+        return _ErrorAction(
+          label: '重试',
+          icon: Icons.refresh,
+          onTap: () {
+            final last = _lastUserMessage;
+            if (last == null || last.isEmpty) return;
+            setState(() => _lastError = null);
+            _sendMessage(overrideText: last);
+          },
+        );
+      case AiErrorType.parseFailed:
+        return _ErrorAction(
+          label: '换个模型',
+          icon: Icons.swap_horiz,
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AISettingsScreen()),
+            );
+            ref.invalidate(aiServiceProvider);
+            if (mounted) setState(() => _lastError = null);
+          },
+        );
+      case AiErrorType.unknown:
+        return null;
+    }
   }
 
   Widget _buildConfirmationCard(List<AgentAction> actions) {
@@ -726,4 +918,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
     );
   }
+}
+
+/// 错误卡片可执行的单个动作（"前往设置" / "重试" / "换模型"）。
+class _ErrorAction {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _ErrorAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 }
