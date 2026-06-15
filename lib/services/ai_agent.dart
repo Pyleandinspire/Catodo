@@ -193,7 +193,6 @@ const int _kCtxTitleMaxLen = 50;
 ///
 /// [now] 用于划分"今天"和"本周"的时间锚点；未传时取 [DateTime.now]。
 /// 测试时可注入固定值以避免日期依赖。
-@visibleForTesting
 String buildTaskContext(List<Task> tasks, {DateTime? now}) {
   if (tasks.isEmpty) {
     return '【当前任务上下文】\n当前没有活跃任务。';
@@ -1070,8 +1069,9 @@ class SchedulingIssue {
     final raw = json['taskIds'];
     if (raw is List) {
       for (final v in raw) {
-        if (v is int) ids.add(v);
-        else if (v is String) {
+        if (v is int) {
+          ids.add(v);
+        } else if (v is String) {
           final p = int.tryParse(v);
           if (p != null) ids.add(p);
         }
@@ -1161,7 +1161,7 @@ class SchedulingSuggestion {
     }
 
     final priorityRaw = parseInt(json['priority']);
-    final priority = priorityRaw == null ? null : priorityRaw.clamp(0, 3);
+    final priority = priorityRaw?.clamp(0, 3);
 
     final subtasksRaw = json['subtasks'];
     List<Map<String, dynamic>>? subtasks;

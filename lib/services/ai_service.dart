@@ -604,6 +604,44 @@ class AIService {
     }
     return (response: AgentResponse.fromJson(r.data!), error: null);
   }
+
+  /// 请求一份时间安排优化建议（PLAN-AI-001-4）。
+  ///
+  /// [taskContext] 是 buildTaskContext 输出的字符串；可选 [extraNote]
+  /// 用于注入"近 14 天逾期/完成统计"等增量信息。
+  ///
+  /// 返回 record (plan, error)：成功时 plan 非空、error 为 null；
+  /// 失败时按 [AiCallError] 分级提示。
+  Future<({SchedulingPlan? plan, AiCallError? error})>
+      requestSchedulingPlanDetailed({
+    required String taskContext,
+    String? extraNote,
+  }) async {
+    final systemPrompt = StringBuffer(kSchedulingSystemPrompt)
+      ..writeln()
+      ..writeln(taskContext);
+    if (extraNote != null && extraNote.isNotEmpty) {
+      systemPrompt
+        ..writeln()
+        ..writeln('【附加信息】')
+        ..writeln(extraNote);
+    }
+    final r = await requestStructuredOutputDetailed(
+      systemPrompt: systemPrompt.toString(),
+      userPrompt: '请基于上述任务给出优化建议（仅返回 JSON）。',
+    );
+    if (r.error != null) return (plan: null, error: r.error);
+    if (r.data == null) {
+      return (
+        plan: null,
+        error: const AiCallError(
+          type: AiErrorType.unknown,
+          message: '未知错误',
+        ),
+      );
+    }
+    return (plan: SchedulingPlan.fromJson(r.data!), error: null);
+  }
 }
 
 // ==================== Dio 错误映射工具 ====================

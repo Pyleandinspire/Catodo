@@ -11,6 +11,7 @@ import '../../data/chat_message_dao.dart';
 import '../../models/chat_message_entity.dart';
 import '../../models/task.dart';
 import 'ai_settings_screen.dart';
+import 'scheduling_optimizer_screen.dart';
 
 /// 聊天页 — 已迁到 Isar 持久化（PLAN-AI-001-5）。
 ///
@@ -829,6 +830,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.bolt, color: Colors.amber),
+              title: const Text('优化时间安排'),
+              subtitle: const Text('AI 分析当前任务并给出建议'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SchedulingOptimizerScreen(),
+                  ),
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.add_task, color: Colors.green),
               title: const Text('创建任务'),
