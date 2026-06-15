@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart'
-    if (dart.library.io) 'permission_handler_stub.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:isar/isar.dart';
 import 'ui/screens/task_list_screen.dart';
@@ -78,15 +76,8 @@ Future<void> _initializeServices() async {
   // 一次性迁移旧 SP 明文凭据到 SecureStore（失败也不阻塞启动）
   await migrateLegacySecretsIfNeeded();
 
-  // 请求通知权限（Android 13+ 需要运行时权限）
-  try {
-    await Permission.notification.request();
-  } catch (_) {
-    // 权限请求失败不影响启动（旧版本 Android 或特殊设备）
-  }
-
-  // 初始化通知服务（内部有 try-catch 保护）
-  // 使用 Future.microtask 确保在 main 完成后执行
+  // 初始化通知服务（内部按平台请求权限：Android 13+ / iOS / macOS）
+  // Windows / Linux 不需要运行时通知权限
   try {
     await NotificationService().initialize();
   } catch (_) {
