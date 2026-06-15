@@ -12,7 +12,9 @@
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)com.example.catodo</string>
+		<string>$(AppIdentifierPrefix)com.lin.catodo</string>
+		<string>$(AppIdentifierPrefix)com.e.catodo</string>
+		<string>$(AppIdentifierPrefix)com.pylelyl.catodo</string>
 	</array>
 </dict>
 </plist>

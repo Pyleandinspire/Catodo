@@ -68,6 +68,9 @@ dependencies:
   # Secure Storage (API Key / WebDAV password)
   flutter_secure_storage: ^9.2.2
 
+  # Cryptography (AES-GCM fallback for SecureStore)
+  cryptography: ^2.7.0
+
   # File Picker (for .ics import)
   file_picker: ^8.0.3
 

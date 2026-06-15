@@ -1028,3 +1028,387 @@ const String kAgentSystemPrompt = '''
   ]
 }
 ''';
+
+// ==================== 时间安排优化助手（PLAN-AI-001-4） ====================
+
+/// 优化建议类型。
+enum SchedulingSuggestionType {
+  reschedule('reschedule'),
+  decompose('decompose'),
+  setPriority('set_priority'),
+  completeOrDrop('complete_or_drop'),
+  addReminder('add_reminder');
+
+  final String value;
+  const SchedulingSuggestionType(this.value);
+
+  static SchedulingSuggestionType? fromString(String? v) {
+    if (v == null) return null;
+    for (final s in SchedulingSuggestionType.values) {
+      if (s.value == v) return s;
+    }
+    return null;
+  }
+}
+
+/// 一个识别到的"问题"：堆叠 / 大任务 / 长期不动 等。
+class SchedulingIssue {
+  final String type;
+  final String? date;
+  final List<int> taskIds;
+  final String note;
+
+  const SchedulingIssue({
+    required this.type,
+    this.date,
+    this.taskIds = const [],
+    required this.note,
+  });
+
+  factory SchedulingIssue.fromJson(Map<String, dynamic> json) {
+    final ids = <int>[];
+    final raw = json['taskIds'];
+    if (raw is List) {
+      for (final v in raw) {
+        if (v is int) ids.add(v);
+        else if (v is String) {
+          final p = int.tryParse(v);
+          if (p != null) ids.add(p);
+        }
+      }
+    } else if (raw is int) {
+      ids.add(raw);
+    }
+    return SchedulingIssue(
+      type: (json['type'] as String?) ?? 'unknown',
+      date: json['date'] as String?,
+      taskIds: ids,
+      note: (json['note'] as String?) ?? '',
+    );
+  }
+}
+
+/// 一条具体建议。
+class SchedulingSuggestion {
+  final String id;
+  final SchedulingSuggestionType type;
+  final int? taskId;
+  final DateTime? newDueDate;
+  final int? priority;
+  final List<Map<String, dynamic>>? subtasks;
+  final List<DateTime>? reminderTimes;
+  final String reason;
+
+  const SchedulingSuggestion({
+    required this.id,
+    required this.type,
+    this.taskId,
+    this.newDueDate,
+    this.priority,
+    this.subtasks,
+    this.reminderTimes,
+    required this.reason,
+  });
+
+  /// LLM 给的描述，UI 卡片标题用。
+  String get title {
+    switch (type) {
+      case SchedulingSuggestionType.reschedule:
+        final d = newDueDate;
+        return '把任务 [$taskId] 改到 ${d != null ? _fmtDate(d) : '?'}';
+      case SchedulingSuggestionType.decompose:
+        final n = subtasks?.length ?? 0;
+        return '拆解任务 [$taskId]（$n 个子任务）';
+      case SchedulingSuggestionType.setPriority:
+        final p = priority;
+        final label = p == 3 ? '高' : p == 2 ? '中' : p == 1 ? '低' : '?';
+        return '设置任务 [$taskId] 优先级为 $label';
+      case SchedulingSuggestionType.completeOrDrop:
+        return '考虑完成或关闭任务 [$taskId]';
+      case SchedulingSuggestionType.addReminder:
+        final times = reminderTimes;
+        if (times != null && times.isNotEmpty) {
+          return '给任务 [$taskId] 加 ${times.length} 个提醒';
+        }
+        return '给任务 [$taskId] 加提醒';
+    }
+  }
+
+  static SchedulingSuggestion? tryFromJson(Map<String, dynamic> json) {
+    final t = SchedulingSuggestionType.fromString(json['type'] as String?);
+    if (t == null) return null;
+    final id = json['id'] as String? ?? '';
+    int? parseInt(dynamic v) {
+      if (v is int) return v;
+      if (v is String) return int.tryParse(v);
+      return null;
+    }
+
+    DateTime? parseDate(dynamic v) {
+      if (v is String && v.isNotEmpty) return DateTime.tryParse(v);
+      return null;
+    }
+
+    List<DateTime>? parseDates(dynamic v) {
+      if (v is! List) return null;
+      final out = <DateTime>[];
+      for (final x in v) {
+        final d = parseDate(x);
+        if (d != null) out.add(d);
+      }
+      out.sort((a, b) => a.compareTo(b));
+      return out.isEmpty ? null : out;
+    }
+
+    final priorityRaw = parseInt(json['priority']);
+    final priority = priorityRaw == null ? null : priorityRaw.clamp(0, 3);
+
+    final subtasksRaw = json['subtasks'];
+    List<Map<String, dynamic>>? subtasks;
+    if (subtasksRaw is List) {
+      subtasks = subtasksRaw
+          .whereType<Map<String, dynamic>>()
+          .map(Map<String, dynamic>.from)
+          .toList(growable: false);
+    }
+
+    return SchedulingSuggestion(
+      id: id,
+      type: t,
+      taskId: parseInt(json['taskId']),
+      newDueDate: parseDate(json['newDueDate']),
+      priority: priority,
+      subtasks: subtasks,
+      reminderTimes: parseDates(json['reminderTimes']),
+      reason: (json['reason'] as String?) ?? '',
+    );
+  }
+}
+
+/// 一份完整的时间安排分析结果。
+class SchedulingPlan {
+  final String summary;
+  final List<SchedulingIssue> issues;
+  final List<SchedulingSuggestion> suggestions;
+
+  /// 解析时被忽略的未知建议类型，UI 可在底部弱提示。
+  final List<String> warnings;
+
+  const SchedulingPlan({
+    required this.summary,
+    this.issues = const [],
+    this.suggestions = const [],
+    this.warnings = const [],
+  });
+
+  factory SchedulingPlan.fromJson(Map<String, dynamic> json) {
+    final issuesRaw = json['issues'];
+    final issues = <SchedulingIssue>[];
+    if (issuesRaw is List) {
+      for (final x in issuesRaw) {
+        if (x is Map<String, dynamic>) issues.add(SchedulingIssue.fromJson(x));
+      }
+    }
+    final suggestionsRaw = json['suggestions'];
+    final suggestions = <SchedulingSuggestion>[];
+    final warnings = <String>[];
+    if (suggestionsRaw is List) {
+      for (final x in suggestionsRaw) {
+        if (x is! Map<String, dynamic>) continue;
+        final s = SchedulingSuggestion.tryFromJson(x);
+        if (s != null) {
+          suggestions.add(s);
+        } else {
+          final t = x['type'];
+          if (t is String && t.isNotEmpty) warnings.add(t);
+        }
+      }
+    }
+    return SchedulingPlan(
+      summary: (json['summary'] as String?) ?? '',
+      issues: issues,
+      suggestions: suggestions,
+      warnings: warnings,
+    );
+  }
+}
+
+/// 应用一条建议；返回 [ActionResult]。
+///
+/// `completeOrDrop` **不在此处自动执行**：UI 必须二次确认后调
+/// [executeAction]([completeTask]) 或 [deleteTask]，避免误关闭。
+Future<ActionResult> applySchedulingSuggestion(
+  SchedulingSuggestion s,
+  TaskRepository dao,
+) async {
+  try {
+    switch (s.type) {
+      case SchedulingSuggestionType.reschedule:
+        return await _applyReschedule(s, dao);
+      case SchedulingSuggestionType.setPriority:
+        return await _applySetPriority(s, dao);
+      case SchedulingSuggestionType.decompose:
+        return await _applyDecompose(s, dao);
+      case SchedulingSuggestionType.addReminder:
+        return await _applyAddReminders(s, dao);
+      case SchedulingSuggestionType.completeOrDrop:
+        return const ActionResult(
+          success: false,
+          message: 'complete_or_drop 需要 UI 二次确认后再执行',
+        );
+    }
+  } catch (e) {
+    return ActionResult(success: false, message: '应用建议失败: $e');
+  }
+}
+
+Future<ActionResult> _applyReschedule(
+  SchedulingSuggestion s,
+  TaskRepository dao,
+) async {
+  if (s.taskId == null || s.newDueDate == null) {
+    return const ActionResult(success: false, message: 'reschedule 缺少 taskId 或 newDueDate');
+  }
+  final existing = await dao.getTaskById(s.taskId!);
+  if (existing == null) {
+    return ActionResult(success: false, message: '任务 ${s.taskId} 不存在');
+  }
+  // 边界保护：若 LLM 给出过去时间，仍允许（用户可能就要回填），但加个温和提示
+  existing.dueDate = s.newDueDate;
+  existing.updatedAt = DateTime.now();
+  await dao.updateTask(existing);
+  return ActionResult(
+    success: true,
+    message: '已把「${existing.title}」改到 ${_fmtDate(s.newDueDate!)}',
+    data: existing,
+  );
+}
+
+Future<ActionResult> _applySetPriority(
+  SchedulingSuggestion s,
+  TaskRepository dao,
+) async {
+  if (s.taskId == null || s.priority == null) {
+    return const ActionResult(success: false, message: 'set_priority 缺参');
+  }
+  final existing = await dao.getTaskById(s.taskId!);
+  if (existing == null) {
+    return ActionResult(success: false, message: '任务 ${s.taskId} 不存在');
+  }
+  final updated = existing.copyWith(priority: s.priority!.clamp(0, 3));
+  await dao.updateTask(updated);
+  final label = s.priority == 3 ? '高' : s.priority == 2 ? '中' : s.priority == 1 ? '低' : '无';
+  return ActionResult(
+    success: true,
+    message: '已把「${existing.title}」优先级设为$label',
+    data: updated,
+  );
+}
+
+Future<ActionResult> _applyDecompose(
+  SchedulingSuggestion s,
+  TaskRepository dao,
+) async {
+  if (s.taskId == null || s.subtasks == null || s.subtasks!.isEmpty) {
+    return const ActionResult(success: false, message: 'decompose 缺少子任务');
+  }
+  final existing = await dao.getTaskById(s.taskId!);
+  if (existing == null) {
+    return ActionResult(success: false, message: '任务 ${s.taskId} 不存在');
+  }
+  final created = <String>[];
+  for (final st in s.subtasks!) {
+    final title = st['title'] as String? ?? '';
+    if (title.isEmpty) continue;
+    final task = Task(
+      title: title,
+      priority: _parsePriority(st['priority']),
+      groupName: existing.groupName,
+      tags: List<String>.from(existing.tags),
+    );
+    await dao.insertTask(task);
+    created.add(title);
+  }
+  return ActionResult(
+    success: true,
+    message: '已把「${existing.title}」拆为 ${created.length} 个子任务',
+    data: created,
+  );
+}
+
+Future<ActionResult> _applyAddReminders(
+  SchedulingSuggestion s,
+  TaskRepository dao,
+) async {
+  if (s.taskId == null || s.reminderTimes == null || s.reminderTimes!.isEmpty) {
+    return const ActionResult(success: false, message: 'add_reminder 缺少时间');
+  }
+  final existing = await dao.getTaskById(s.taskId!);
+  if (existing == null) {
+    return ActionResult(success: false, message: '任务 ${s.taskId} 不存在');
+  }
+  final newTimes = List<DateTime>.from(existing.reminderTimes);
+  for (final t in s.reminderTimes!) {
+    if (!newTimes.any((x) => x.isAtSameMomentAs(t))) newTimes.add(t);
+  }
+  newTimes.sort((a, b) => a.compareTo(b));
+  final updated = existing.copyWith(reminderTimes: newTimes);
+  await dao.updateTask(updated);
+  return ActionResult(
+    success: true,
+    message: '已给「${existing.title}」加 ${s.reminderTimes!.length} 个提醒',
+    data: updated,
+  );
+}
+
+/// 时间安排优化的 system prompt。
+///
+/// 与 [kAgentSystemPrompt] 不同：本提示只生成"分析报告 + 建议清单"，
+/// 不直接执行 action。客户端把每条建议渲染成卡片，逐条/批量应用。
+const String kSchedulingSystemPrompt = '''
+你是一位时间管理顾问。基于"任务上下文"分析用户当前的安排，输出**纯 JSON**：
+{
+  "summary": "一句话总览（30 字以内）",
+  "issues": [
+    {"type": "overload|too_big|stale|conflict|other",
+     "date": "YYYY-MM-DD" 或 null,
+     "taskIds": [int, ...],
+     "note": "简短说明"}
+  ],
+  "suggestions": [
+    {"id": "s1",
+     "type": "reschedule",
+     "taskId": <int>,
+     "newDueDate": "YYYY-MM-DDTHH:mm",
+     "reason": "..."},
+    {"id": "s2",
+     "type": "decompose",
+     "taskId": <int>,
+     "subtasks": [
+        {"title": "...", "priority": 1|2|3, "estimatedDays": <int?>}
+     ],
+     "reason": "..."},
+    {"id": "s3",
+     "type": "set_priority",
+     "taskId": <int>,
+     "priority": 1|2|3,
+     "reason": "..."},
+    {"id": "s4",
+     "type": "complete_or_drop",
+     "taskId": <int>,
+     "reason": "..."},
+    {"id": "s5",
+     "type": "add_reminder",
+     "taskId": <int>,
+     "reminderTimes": ["YYYY-MM-DDTHH:mm", ...],
+     "reason": "..."}
+  ]
+}
+
+规则：
+1. 只能引用上下文里出现过的 taskId（[id:N]）。
+2. 建议总数 3–8 条，避免泛滥。
+3. 工作日参考：周一至周五 9:00–18:00；除非用户上下文给了不同信号。
+4. 不要返回 markdown 代码块，只返回纯 JSON。
+5. 没什么好建议时，suggestions 留空数组，summary 简单描述。
+''';

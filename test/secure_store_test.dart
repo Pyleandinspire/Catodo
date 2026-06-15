@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:catodo/services/secure_store.dart';
 
@@ -42,6 +43,7 @@ void main() {
   late _AlwaysFailStorage mock;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     mock = _AlwaysFailStorage();
     SecureStore.overrideForTest(const FlutterSecureStorage());
   });

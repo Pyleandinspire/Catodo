@@ -97,6 +97,8 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   Future<void> _saveConfig() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
+
+    final pendingApiKey = _apiKeyController.text.trim();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('ai_provider_id', _selectedProviderId);
@@ -104,7 +106,7 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
       await prefs.setString('ai_model', _modelController.text.trim());
 
       // 写敏感凭据；失败会抛 SecureStoreException
-      await SecureStore.instance.writeAiApiKey(_apiKeyController.text.trim());
+      await SecureStore.instance.writeAiApiKey(pendingApiKey);
 
       // 旧明文 key 若仍残留，主动清掉一次（双保险）
       await prefs.remove('ai_api_key');
@@ -121,14 +123,82 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
         );
       }
     } on SecureStoreException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('保存失败：${e.cause}（API Key 未写入）'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 6),
+      // 给用户三选一：重试 / 改用本地加密 / 取消
+      if (!mounted) return;
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.lock_outline, color: Colors.red, size: 48),
+          title: const Text('安全存储不可用'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '无法把 API Key 写入系统 Keychain。',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '原因：${e.cause}',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '可改用 "本地加密保存"（AES-GCM）：兼容性高，但安全等级略低于系统 Keychain。',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
           ),
-        );
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'retry'),
+              child: const Text('重试'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'fallback'),
+              child: const Text('改用本地加密'),
+            ),
+          ],
+        ),
+      );
+
+      if (choice == 'fallback') {
+        try {
+          await SecureStore.instance
+              .switchToAppEncryptedAndWrite(_aiApiKeyKey, pendingApiKey);
+          ref.invalidate(aiServiceProvider);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('已用本地加密保存 AI 配置'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        } catch (e2) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('本地加密也保存失败：$e2'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } else if (choice == 'retry') {
+        // 让用户改完再点一次保存
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('请检查后重新点击保存'),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -143,6 +213,9 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
       if (mounted) setState(() => _isSaving = false);
     }
   }
+
+  /// SecureStore 内部写入用的 ai api key。与 SecureStore._kAiApiKey 一致。
+  static const String _aiApiKeyKey = 'secure.ai_api_key';
 
   Future<void> _testConnection() async {
     setState(() => _isTesting = true);
