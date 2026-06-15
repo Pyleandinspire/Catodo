@@ -4,20 +4,27 @@ import 'package:catodo/models/task.dart';
 
 void main() {
   group('AgentActionType 测试', () {
-    test('fromString 正确解析所有类型', () {
+    test('fromString 已知值', () {
       expect(AgentActionType.fromString('create_task'), AgentActionType.createTask);
       expect(AgentActionType.fromString('update_task'), AgentActionType.updateTask);
       expect(AgentActionType.fromString('complete_task'), AgentActionType.completeTask);
+      expect(AgentActionType.fromString('uncomplete_task'), AgentActionType.uncompleteTask);
       expect(AgentActionType.fromString('delete_task'), AgentActionType.deleteTask);
       expect(AgentActionType.fromString('decompose_task'), AgentActionType.decomposeTask);
       expect(AgentActionType.fromString('add_tag'), AgentActionType.addTag);
       expect(AgentActionType.fromString('remove_tag'), AgentActionType.removeTag);
       expect(AgentActionType.fromString('set_group'), AgentActionType.setGroup);
       expect(AgentActionType.fromString('set_priority'), AgentActionType.setPriority);
+      expect(AgentActionType.fromString('add_reminder'), AgentActionType.addReminder);
+      expect(AgentActionType.fromString('remove_reminder'), AgentActionType.removeReminder);
+      expect(AgentActionType.fromString('clear_reminders'), AgentActionType.clearReminders);
+      expect(AgentActionType.fromString('set_repeat'), AgentActionType.setRepeat);
+      expect(AgentActionType.fromString('clear_repeat'), AgentActionType.clearRepeat);
     });
 
-    test('fromString 未知值返回第一个类型', () {
-      expect(AgentActionType.fromString('unknown'), AgentActionType.createTask);
+    test('fromString 未知值返回 null（不再回退到 createTask）', () {
+      expect(AgentActionType.fromString('unknown'), isNull);
+      expect(AgentActionType.fromString('add_reminders' /* 多了 s */), isNull);
     });
   });
 
@@ -79,6 +86,45 @@ void main() {
       expect(action.needsConfirmation, false);
     });
 
+    test('needsConfirmation - reminder/repeat/uncomplete 都需要确认', () {
+      for (final t in [
+        AgentActionType.addReminder,
+        AgentActionType.removeReminder,
+        AgentActionType.clearReminders,
+        AgentActionType.setRepeat,
+        AgentActionType.clearRepeat,
+        AgentActionType.uncompleteTask,
+      ]) {
+        final a = AgentAction(type: t, params: const {});
+        expect(a.needsConfirmation, true, reason: '$t 应需要确认');
+      }
+    });
+
+    test('description - add_reminder', () {
+      final a = AgentAction(
+        type: AgentActionType.addReminder,
+        params: {'taskId': 7, 'time': '2026-06-15T09:00'},
+      );
+      expect(a.description, contains('[7]'));
+      expect(a.description, contains('2026-06-15T09:00'));
+    });
+
+    test('description - set_repeat 简词', () {
+      final a = AgentAction(
+        type: AgentActionType.setRepeat,
+        params: const {'taskId': 7, 'type': 'weekly', 'interval': 2},
+      );
+      expect(a.description, contains('每 2 weekly'));
+    });
+
+    test('description - set_repeat rrule', () {
+      final a = AgentAction(
+        type: AgentActionType.setRepeat,
+        params: const {'taskId': 7, 'rrule': 'FREQ=DAILY;INTERVAL=1'},
+      );
+      expect(a.description, contains('FREQ=DAILY'));
+    });
+
     test('description - create_task', () {
       final action = AgentAction(type: AgentActionType.createTask, params: {'title': '写报告'});
       expect(action.description, '创建任务「写报告」');
@@ -134,6 +180,22 @@ void main() {
       };
       final response = AgentResponse.fromJson(json);
       expect(response.actions.length, 3);
+      expect(response.warnings, isEmpty);
+    });
+
+    test('fromJson 未知 action 进入 warnings 并被过滤', () {
+      final json = {
+        'reply': '好',
+        'actions': [
+          {'type': 'create_task', 'params': {'title': 'a'}},
+          {'type': 'add_reminders', 'params': {}}, // 多了 s
+          {'type': 'super_unknown', 'params': {}},
+        ],
+      };
+      final r = AgentResponse.fromJson(json);
+      expect(r.actions.length, 1);
+      expect(r.actions.first.type, AgentActionType.createTask);
+      expect(r.warnings, ['add_reminders', 'super_unknown']);
     });
   });
 
@@ -194,20 +256,107 @@ void main() {
       expect(context, contains('截止:2026-06-10'));
     });
 
-    test('超过 50 个任务时截断', () {
-      final tasks = List.generate(60, (i) => Task(title: '任务$i', priority: 1)..id = i);
+    test('其他活跃任务段按上限截断', () {
+      // 60 条均为 priority=1、无 dueDate 的任务，全部落到「其他活跃任务」段
+      // 该段上限 15，因此输出应包含 "前 15/60" 而非全部 60 条
+      final tasks =
+          List.generate(60, (i) => Task(title: '任务$i', priority: 1)..id = i);
       final context = buildTaskContext(tasks);
       expect(context, contains('活跃任务共 60 个'));
-      // 不应包含第 51 个任务（id:50）
-      expect(context, isNot(contains('[id:50]')));
-      // 应包含第 50 个任务（id:49）
-      expect(context, contains('[id:49]'));
+      expect(context, contains('其他活跃任务'));
+      expect(context, contains('前 15/60'));
     });
 
     test('活跃任务计数正确', () {
       final tasks = List.generate(3, (i) => Task(title: '任务$i', priority: 1)..id = i);
       final context = buildTaskContext(tasks);
       expect(context, contains('活跃任务共 3 个'));
+    });
+
+    test('分段：今日/逾期/本周/高优/其他 各段都出现', () {
+      final now = DateTime(2026, 6, 15, 10);
+      final tasks = <Task>[
+        // 今日/逾期：5 条（含一条已逾期）
+        for (var i = 0; i < 4; i++)
+          Task(title: '今日$i', priority: 1)
+            ..id = 100 + i
+            ..dueDate = DateTime(2026, 6, 15, 14 + i),
+        Task(title: '逾期1', priority: 1)
+          ..id = 109
+          ..dueDate = DateTime(2026, 6, 13),
+        // 本周内：3 条
+        for (var i = 0; i < 3; i++)
+          Task(title: '本周$i', priority: 1)
+            ..id = 200 + i
+            ..dueDate = DateTime(2026, 6, 17 + i),
+        // 高优先级（无 dueDate）：2 条
+        for (var i = 0; i < 2; i++)
+          Task(title: '高优$i', priority: 3)..id = 300 + i,
+        // 其他活跃：4 条
+        for (var i = 0; i < 4; i++)
+          Task(title: '其他$i', priority: 1)..id = 400 + i,
+      ];
+      final ctx = buildTaskContext(tasks, now: now);
+      expect(ctx, contains('今日 / 逾期'));
+      expect(ctx, contains('本周内截止'));
+      expect(ctx, contains('高优先级 (≥2)'));
+      expect(ctx, contains('其他活跃任务'));
+      expect(ctx, contains('共 5'), reason: '今日/逾期段共 5 条');
+      expect(ctx, contains('共 3'), reason: '本周内段共 3 条');
+      expect(ctx, contains('共 2'), reason: '高优先级段共 2 条');
+      expect(ctx, contains('共 4'), reason: '其他活跃段共 4 条');
+    });
+
+    test('头部汇总数字正确（含今日/逾期、本周、高优计数）', () {
+      final now = DateTime(2026, 6, 15, 10);
+      final tasks = <Task>[
+        Task(title: '今日a', priority: 3)
+          ..id = 1
+          ..dueDate = DateTime(2026, 6, 15, 14),
+        Task(title: '本周b', priority: 1)
+          ..id = 2
+          ..dueDate = DateTime(2026, 6, 18),
+        Task(title: '本周c', priority: 2)
+          ..id = 3
+          ..dueDate = DateTime(2026, 6, 19),
+        Task(title: '高优d', priority: 2)..id = 4,
+        Task(title: '低优e', priority: 0)..id = 5,
+      ];
+      final ctx = buildTaskContext(tasks, now: now);
+      expect(ctx, contains('活跃任务共 5 个'));
+      expect(ctx, contains('今日/逾期 1'));
+      expect(ctx, contains('本周内截止 2'));
+      // 高优(≥2) 总数 = 今日 1 + 本周 1 + 高优段 1 = 3
+      expect(ctx, contains('高优先级(≥2) 3'));
+    });
+
+    test('过长标题被截断到 50 字符以内', () {
+      final longTitle = '长' * 80;
+      final task = Task(title: longTitle, priority: 3)..id = 1;
+      final ctx = buildTaskContext([task]);
+      // 输出中含截断符 …
+      expect(ctx, contains('…'));
+      // 任意一行最多 50 个 '长' 字符（49 个 + 1 个 …）
+      final hasOverlong = RegExp('长{51,}').hasMatch(ctx);
+      expect(hasOverlong, isFalse);
+    });
+
+    test('注入时间锚点：相对今日的任务被正确归类', () {
+      final now = DateTime(2026, 1, 10);
+      final t1 = Task(title: '今日', priority: 1)
+        ..id = 1
+        ..dueDate = DateTime(2026, 1, 10, 18);
+      final t2 = Task(title: '后天', priority: 1)
+        ..id = 2
+        ..dueDate = DateTime(2026, 1, 12);
+      final t3 = Task(title: '下月', priority: 1)
+        ..id = 3
+        ..dueDate = DateTime(2026, 2, 20);
+      final ctx = buildTaskContext([t1, t2, t3], now: now);
+      // 1 → 今日；2 → 本周内；3 → 落到「其他活跃任务」
+      expect(ctx, contains('今日 / 逾期'));
+      expect(ctx, contains('本周内截止'));
+      expect(ctx, contains('其他活跃任务'));
     });
   });
 
@@ -244,12 +393,18 @@ void main() {
       expect(kAgentSystemPrompt, contains('create_task'));
       expect(kAgentSystemPrompt, contains('update_task'));
       expect(kAgentSystemPrompt, contains('complete_task'));
+      expect(kAgentSystemPrompt, contains('uncomplete_task'));
       expect(kAgentSystemPrompt, contains('delete_task'));
       expect(kAgentSystemPrompt, contains('decompose_task'));
       expect(kAgentSystemPrompt, contains('add_tag'));
       expect(kAgentSystemPrompt, contains('remove_tag'));
       expect(kAgentSystemPrompt, contains('set_group'));
       expect(kAgentSystemPrompt, contains('set_priority'));
+      expect(kAgentSystemPrompt, contains('add_reminder'));
+      expect(kAgentSystemPrompt, contains('remove_reminder'));
+      expect(kAgentSystemPrompt, contains('clear_reminders'));
+      expect(kAgentSystemPrompt, contains('set_repeat'));
+      expect(kAgentSystemPrompt, contains('clear_repeat'));
     });
 
     test('包含 JSON 格式要求', () {
@@ -260,6 +415,37 @@ void main() {
     test('包含规则说明', () {
       expect(kAgentSystemPrompt, contains('priority'));
       expect(kAgentSystemPrompt, contains('taskId'));
+    });
+
+    test('包含 rrule / 简词 / 示例', () {
+      expect(kAgentSystemPrompt, contains('FREQ=DAILY'));
+      expect(kAgentSystemPrompt, contains('repeat'));
+      expect(kAgentSystemPrompt, contains('reminderTimes'));
+    });
+  });
+
+  group('repeatToRrule', () {
+    test('daily/weekly/monthly + interval', () {
+      expect(repeatToRrule('daily', 1), 'FREQ=DAILY;INTERVAL=1');
+      expect(repeatToRrule('daily', 2), 'FREQ=DAILY;INTERVAL=2');
+      expect(repeatToRrule('weekly', 1), 'FREQ=WEEKLY;INTERVAL=1');
+      expect(repeatToRrule('monthly', 3), 'FREQ=MONTHLY;INTERVAL=3');
+    });
+
+    test('大小写不敏感', () {
+      expect(repeatToRrule('Daily', 1), 'FREQ=DAILY;INTERVAL=1');
+      expect(repeatToRrule('WEEKLY', 1), 'FREQ=WEEKLY;INTERVAL=1');
+    });
+
+    test('interval 缺失或 <1 默认 1', () {
+      expect(repeatToRrule('daily', null), 'FREQ=DAILY;INTERVAL=1');
+      expect(repeatToRrule('daily', 0), 'FREQ=DAILY;INTERVAL=1');
+      expect(repeatToRrule('daily', -3), 'FREQ=DAILY;INTERVAL=1');
+    });
+
+    test('未知 type 返回 null', () {
+      expect(repeatToRrule('yearly', 1), isNull);
+      expect(repeatToRrule(null, 1), isNull);
     });
   });
 }

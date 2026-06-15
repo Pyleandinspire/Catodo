@@ -23,6 +23,37 @@ class AIConfig {
   LLMProvider get provider => LLMProviderRegistry.getById(providerId);
 }
 
+/// 单轮聊天消息（用于多轮上下文记忆）
+///
+/// `role` 限定为 `'user'` 或 `'assistant'`；`'system'` 由 [AIService] 内部拼装，
+/// 调用方不应在 history 中放 system 角色。
+class ChatTurn {
+  final String role;
+  final String content;
+
+  const ChatTurn({required this.role, required this.content});
+
+  const ChatTurn.user(String content) : this(role: 'user', content: content);
+  const ChatTurn.assistant(String content)
+    : this(role: 'assistant', content: content);
+
+  Map<String, dynamic> toJson() => {'role': role, 'content': content};
+}
+
+/// 截断聊天历史，仅保留最近 [maxTurns] 轮（一轮 = 一条 user + 一条 assistant，约 2 条 message）。
+///
+/// 现阶段以 message 数量近似（保留 `maxTurns * 2` 条），日后可改为按 token 估算。
+/// 始终从最早的一端丢弃，以确保保留到最近的上下文。
+@visibleForTesting
+List<ChatTurn> truncateChatHistory(
+  List<ChatTurn> history, {
+  int maxTurns = 8,
+}) {
+  final maxMessages = maxTurns * 2;
+  if (history.length <= maxMessages) return List.of(history);
+  return history.sublist(history.length - maxMessages);
+}
+
 /// 连接测试结果
 class ConnectionTestResult {
   final bool success;
@@ -35,6 +66,47 @@ class ConnectionTestResult {
     this.detail,
   });
 }
+
+/// 调用 AI 时可能出现的错误类型分级。
+///
+/// UI 层据此区分提示与可恢复操作（重试 / 跳设置 / 换模型）。
+enum AiErrorType {
+  unauthorized,
+  forbidden,
+  notFound,
+  badRequest,
+  rateLimited,
+  serverError,
+  network,
+  timeout,
+  parseFailed,
+  unknown,
+}
+
+/// AI 调用失败的结构化错误信息。
+class AiCallError {
+  final AiErrorType type;
+  final String message;
+  final String? detail;
+  final int? statusCode;
+
+  const AiCallError({
+    required this.type,
+    required this.message,
+    this.detail,
+    this.statusCode,
+  });
+
+  @override
+  String toString() =>
+      'AiCallError($type, status=$statusCode, message=$message, detail=$detail)';
+}
+
+/// `requestStructuredOutput` 的详细返回值：data 与 error 互斥。
+typedef AiStructuredResult = ({Map<String, dynamic>? data, AiCallError? error});
+
+/// `requestAgentActionWithHistory` 的详细返回值。
+typedef AiAgentResult = ({AgentResponse response, AiCallError? error});
 
 class AIService {
   final AIConfig config;
@@ -120,21 +192,41 @@ class AIService {
   /// - 不发送 response_format（最大兼容性，所有厂商都支持）
   /// - 通过 prompt 强制要求 JSON 格式
   /// - 宽容解析响应：兼容 markdown 代码块包裹、多余空白等
+  ///
+  /// 失败时返回 null；如需结构化错误信息，使用 [requestStructuredOutputDetailed]。
   Future<Map<String, dynamic>?> requestStructuredOutput({
     required String systemPrompt,
     required String userPrompt,
+    List<ChatTurn> history = const [],
+  }) async {
+    final r = await requestStructuredOutputDetailed(
+      systemPrompt: systemPrompt,
+      userPrompt: userPrompt,
+      history: history,
+    );
+    return r.data;
+  }
+
+  /// 详细版：返回 (data, error)；data 与 error 至多一个非空。
+  Future<AiStructuredResult> requestStructuredOutputDetailed({
+    required String systemPrompt,
+    required String userPrompt,
+    List<ChatTurn> history = const [],
   }) async {
     try {
+      final messages = <Map<String, dynamic>>[
+        {
+          'role': 'system',
+          'content':
+              '$systemPrompt\n\n【重要】你必须只返回纯 JSON 格式，不要包含任何 markdown 代码块标记（如 ```json ```）或其他非 JSON 内容。',
+        },
+        for (final t in history) t.toJson(),
+        {'role': 'user', 'content': userPrompt},
+      ];
+
       final data = <String, dynamic>{
         'model': config.modelName,
-        'messages': [
-          {
-            'role': 'system',
-            'content':
-                '$systemPrompt\n\n【重要】你必须只返回纯 JSON 格式，不要包含任何 markdown 代码块标记（如 ```json ```）或其他非 JSON 内容。',
-          },
-          {'role': 'user', 'content': userPrompt},
-        ],
+        'messages': messages,
         'temperature': _provider.defaultTemperature,
       };
 
@@ -143,19 +235,44 @@ class AIService {
       final rawContent = _extractContent(response.data);
       if (rawContent == null) {
         debugPrint('AI API 响应格式无法解析: ${response.data}');
-        return null;
+        return (
+          data: null,
+          error: const AiCallError(
+            type: AiErrorType.parseFailed,
+            message: 'AI 返回了无法解析的响应',
+            detail: '响应中未找到可识别的 content 字段，可能是模型与端点不匹配。',
+          ),
+        );
       }
 
-      return _parseJsonContent(rawContent);
+      final parsed = _parseJsonContent(rawContent);
+      if (parsed == null) {
+        return (
+          data: null,
+          error: AiCallError(
+            type: AiErrorType.parseFailed,
+            message: 'AI 返回了非 JSON 格式',
+            detail: '原始响应（截断）: ${_truncateForDisplay(rawContent)}',
+          ),
+        );
+      }
+      return (data: parsed, error: null);
     } on DioException catch (e) {
-      final errorMsg = _parseError(e);
-      debugPrint('AI API 请求失败: $errorMsg');
+      final err = mapDioExceptionForTest(e);
+      debugPrint('AI API 请求失败: ${err.message} / ${err.detail}');
       debugPrint('  请求 URL: $fullApiUrl');
-      return null;
+      return (data: null, error: err);
     } catch (e) {
       debugPrint('AI 服务异常: $e');
       debugPrint('  请求 URL: $fullApiUrl');
-      return null;
+      return (
+        data: null,
+        error: AiCallError(
+          type: AiErrorType.unknown,
+          message: '未知错误',
+          detail: e.toString(),
+        ),
+      );
     }
   }
 
@@ -381,37 +498,6 @@ class AIService {
     }
   }
 
-  String _parseError(DioException e) {
-    final statusCode = e.response?.statusCode;
-    final responseBody = e.response?.data;
-    String detail = '';
-    if (responseBody is Map) {
-      final errorObj = responseBody['error'];
-      if (errorObj is Map) {
-        detail = errorObj['message']?.toString() ?? '';
-      } else if (errorObj is String) {
-        detail = errorObj;
-      }
-    }
-
-    switch (statusCode) {
-      case 401:
-        return '认证失败：API Key 无效或已过期';
-      case 403:
-        return '访问被拒绝：请检查 API Key 权限';
-      case 404:
-        return '端点未找到：请检查 API URL 和模型名称${detail.isNotEmpty ? ' ($detail)' : ''}';
-      case 429:
-        return '请求频率超限：请稍后再试';
-      case 500:
-        return '服务器内部错误：请稍后再试';
-      case 503:
-        return '服务暂时不可用：请稍后再试';
-      default:
-        return '请求失败 ($statusCode): ${e.message ?? e.type.name}';
-    }
-  }
-
   Future<List<Map<String, dynamic>>?> decomposeTask(String taskTitle) async {
     const systemPrompt = '''
 你是一个严谨的个人效能专家。请将用户输入的宏大任务拆解为3-5个具体可执行的子任务。
@@ -462,17 +548,203 @@ class AIService {
     required String userMessage,
     required String context,
   }) async {
-    final systemPrompt = '$kAgentSystemPrompt\n\n$context';
+    return requestAgentActionWithHistory(
+      latestUserMessage: userMessage,
+      context: context,
+      history: const [],
+    );
+  }
 
-    final result = await requestStructuredOutput(
+  /// 多轮版本：在 system 之外携带最近若干轮对话历史。
+  ///
+  /// [history] 必须只包含 user/assistant 角色，调用前可经 [truncateChatHistory] 截断。
+  Future<AgentResponse> requestAgentActionWithHistory({
+    required List<ChatTurn> history,
+    required String latestUserMessage,
+    required String context,
+  }) async {
+    final r = await requestAgentActionDetailedWithHistory(
+      history: history,
+      latestUserMessage: latestUserMessage,
+      context: context,
+    );
+    return r.response;
+  }
+
+  /// 详细版：返回 (response, error)。失败时 response 为兜底回复，
+  /// error 包含 [AiErrorType] 供 UI 分支提示。
+  Future<AiAgentResult> requestAgentActionDetailedWithHistory({
+    required List<ChatTurn> history,
+    required String latestUserMessage,
+    required String context,
+  }) async {
+    final systemPrompt = '$kAgentSystemPrompt\n\n$context';
+    final trimmed = truncateChatHistory(history);
+
+    final r = await requestStructuredOutputDetailed(
       systemPrompt: systemPrompt,
-      userPrompt: userMessage,
+      userPrompt: latestUserMessage,
+      history: trimmed,
     );
 
-    if (result == null) {
-      return const AgentResponse(reply: '抱歉，我暂时无法处理你的请求。');
+    if (r.error != null) {
+      return (
+        response: AgentResponse(reply: r.error!.message),
+        error: r.error,
+      );
     }
-
-    return AgentResponse.fromJson(result);
+    if (r.data == null) {
+      return (
+        response: const AgentResponse(reply: '抱歉，我暂时无法处理你的请求。'),
+        error: const AiCallError(
+          type: AiErrorType.unknown,
+          message: '未知错误',
+        ),
+      );
+    }
+    return (response: AgentResponse.fromJson(r.data!), error: null);
   }
+
+  /// 请求一份时间安排优化建议（PLAN-AI-001-4）。
+  ///
+  /// [taskContext] 是 buildTaskContext 输出的字符串；可选 [extraNote]
+  /// 用于注入"近 14 天逾期/完成统计"等增量信息。
+  ///
+  /// 返回 record (plan, error)：成功时 plan 非空、error 为 null；
+  /// 失败时按 [AiCallError] 分级提示。
+  Future<({SchedulingPlan? plan, AiCallError? error})>
+      requestSchedulingPlanDetailed({
+    required String taskContext,
+    String? extraNote,
+  }) async {
+    final systemPrompt = StringBuffer(kSchedulingSystemPrompt)
+      ..writeln()
+      ..writeln(taskContext);
+    if (extraNote != null && extraNote.isNotEmpty) {
+      systemPrompt
+        ..writeln()
+        ..writeln('【附加信息】')
+        ..writeln(extraNote);
+    }
+    final r = await requestStructuredOutputDetailed(
+      systemPrompt: systemPrompt.toString(),
+      userPrompt: '请基于上述任务给出优化建议（仅返回 JSON）。',
+    );
+    if (r.error != null) return (plan: null, error: r.error);
+    if (r.data == null) {
+      return (
+        plan: null,
+        error: const AiCallError(
+          type: AiErrorType.unknown,
+          message: '未知错误',
+        ),
+      );
+    }
+    return (plan: SchedulingPlan.fromJson(r.data!), error: null);
+  }
+}
+
+// ==================== Dio 错误映射工具 ====================
+
+/// 把 [DioException] 映射为 [AiCallError]，供 UI 分级展示与单测使用。
+///
+/// 暴露为公开顶层函数，避免在私有声明上加 `@visibleForTesting`（lint 警告）。
+AiCallError mapDioExceptionForTest(DioException e) {
+  final statusCode = e.response?.statusCode;
+  final responseBody = e.response?.data;
+
+  String detail = '';
+  if (responseBody is Map) {
+    final errorObj = responseBody['error'];
+    if (errorObj is Map) {
+      detail = errorObj['message']?.toString() ?? '';
+    } else if (errorObj is String) {
+      detail = errorObj;
+    }
+    if (detail.isEmpty) {
+      detail = responseBody.toString();
+    }
+  } else if (responseBody != null) {
+    detail = responseBody.toString();
+  }
+  detail = _truncateForDisplay(detail);
+
+  // 状态码优先于 DioExceptionType
+  switch (statusCode) {
+    case 401:
+      return AiCallError(
+        type: AiErrorType.unauthorized,
+        message: 'API Key 无效或已过期',
+        detail: detail.isNotEmpty ? detail : null,
+        statusCode: 401,
+      );
+    case 403:
+      return AiCallError(
+        type: AiErrorType.forbidden,
+        message: '访问被拒绝',
+        detail: detail.isNotEmpty ? detail : '请检查 API Key 权限',
+        statusCode: 403,
+      );
+    case 404:
+      return AiCallError(
+        type: AiErrorType.notFound,
+        message: '端点不存在或模型名错误',
+        detail: detail.isNotEmpty ? detail : '请检查 API URL 与 model 名称',
+        statusCode: 404,
+      );
+    case 400:
+      return AiCallError(
+        type: AiErrorType.badRequest,
+        message: '请求参数错误',
+        detail: detail.isNotEmpty ? detail : '可能是模型名称不正确',
+        statusCode: 400,
+      );
+    case 429:
+      return AiCallError(
+        type: AiErrorType.rateLimited,
+        message: '请求太频繁',
+        detail: detail.isNotEmpty ? detail : '请稍后再试',
+        statusCode: 429,
+      );
+    case 500:
+    case 502:
+    case 503:
+      return AiCallError(
+        type: AiErrorType.serverError,
+        message: '厂商服务器错误 ($statusCode)',
+        detail: '不是你的配置问题，请稍后再试',
+        statusCode: statusCode,
+      );
+  }
+
+  // 无 status code → 看 DioExceptionType
+  switch (e.type) {
+    case DioExceptionType.connectionTimeout:
+    case DioExceptionType.sendTimeout:
+    case DioExceptionType.receiveTimeout:
+      return AiCallError(
+        type: AiErrorType.timeout,
+        message: '网络超时',
+        detail: '请稍后重试，或换用更快的模型',
+      );
+    case DioExceptionType.connectionError:
+    case DioExceptionType.badCertificate:
+      return AiCallError(
+        type: AiErrorType.network,
+        message: '无法连接到服务器',
+        detail: '请检查 API URL 是否正确，以及网络/代理配置',
+      );
+    default:
+      return AiCallError(
+        type: AiErrorType.unknown,
+        message: '请求失败',
+        detail: e.message ?? e.type.name,
+      );
+  }
+}
+
+String _truncateForDisplay(String s, {int max = 240}) {
+  final trimmed = s.trim();
+  if (trimmed.length <= max) return trimmed;
+  return '${trimmed.substring(0, max - 1)}…';
 }

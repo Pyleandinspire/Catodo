@@ -1,11 +1,20 @@
 import 'package:isar/isar.dart';
 import '../models/task.dart';
 
-class TaskDao {
+/// 任务仓储接口；TaskDao 是 Isar 实现，测试可注入内存版。
+abstract class TaskRepository {
+  Future<Task?> getTaskById(int id);
+  Future<Task> insertTask(Task task);
+  Future<Task> updateTask(Task task);
+  Future<void> softDeleteTask(int id);
+}
+
+class TaskDao implements TaskRepository {
   final Isar isar;
 
   TaskDao(this.isar);
 
+  @override
   Future<Task> insertTask(Task task) async {
     task.createdAt = DateTime.now();
     task.updatedAt = DateTime.now();
@@ -16,6 +25,7 @@ class TaskDao {
     return task;
   }
 
+  @override
   Future<Task?> getTaskById(int id) async {
     return await isar.tasks.get(id);
   }
@@ -52,6 +62,7 @@ class TaskDao {
     return allTasks.where((task) => task.tags.contains(tag)).toList();
   }
 
+  @override
   Future<Task> updateTask(Task task) async {
     task.updatedAt = DateTime.now();
     await isar.writeTxn(() async {
@@ -60,6 +71,7 @@ class TaskDao {
     return task;
   }
 
+  @override
   Future<void> softDeleteTask(int id) async {
     final task = await isar.tasks.get(id);
     if (task != null) {

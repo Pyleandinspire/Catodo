@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/webdav_service.dart';
+import '../services/secure_store.dart';
 
 class WebDAVConfigNotifier extends StateNotifier<WebDAVConfig> {
   WebDAVConfigNotifier() : super(WebDAVConfig()) {
@@ -11,7 +12,7 @@ class WebDAVConfigNotifier extends StateNotifier<WebDAVConfig> {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('webdav_url') ?? '';
     final username = prefs.getString('webdav_username') ?? '';
-    final password = prefs.getString('webdav_password') ?? '';
+    final password = await SecureStore.instance.readWebDavPassword() ?? '';
     state = WebDAVConfig(url: url, username: username, password: password);
   }
 
@@ -19,7 +20,9 @@ class WebDAVConfigNotifier extends StateNotifier<WebDAVConfig> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('webdav_url', config.url);
     await prefs.setString('webdav_username', config.username);
-    await prefs.setString('webdav_password', config.password);
+    await SecureStore.instance.writeWebDavPassword(config.password);
+    // 旧明文 password 若仍残留，主动清掉一次
+    await prefs.remove('webdav_password');
     state = config;
   }
 

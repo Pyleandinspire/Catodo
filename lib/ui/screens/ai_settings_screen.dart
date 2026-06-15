@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/ai_service.dart';
 import '../../services/llm_provider_registry.dart';
+import '../../services/secure_store.dart';
+import '../../providers/chat_provider.dart';
 
 class AISettingsScreen extends ConsumerStatefulWidget {
   const AISettingsScreen({super.key});
@@ -18,6 +20,7 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   String _selectedProviderId = 'custom';
   bool _isCustomProvider = true;
   bool _isTesting = false;
+  bool _isSaving = false;
   bool _isFetchingModels = false;
   bool _fetchModelsFailed = false;
   List<String> _fetchedModels = [];
@@ -31,7 +34,8 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     _selectedProviderId = prefs.getString('ai_provider_id') ?? 'custom';
-    _apiKeyController.text = prefs.getString('ai_api_key') ?? '';
+    _apiKeyController.text =
+        await SecureStore.instance.readAiApiKey() ?? '';
     _apiUrlController.text = prefs.getString('ai_api_url') ?? '';
     _modelController.text = prefs.getString('ai_model') ?? '';
 
@@ -91,21 +95,127 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   }
 
   Future<void> _saveConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('ai_provider_id', _selectedProviderId);
-    await prefs.setString('ai_api_key', _apiKeyController.text.trim());
-    await prefs.setString('ai_api_url', _apiUrlController.text.trim());
-    await prefs.setString('ai_model', _modelController.text.trim());
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('AI 配置已保存'),
-          backgroundColor: Colors.green,
+    final pendingApiKey = _apiKeyController.text.trim();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('ai_provider_id', _selectedProviderId);
+      await prefs.setString('ai_api_url', _apiUrlController.text.trim());
+      await prefs.setString('ai_model', _modelController.text.trim());
+
+      // 写敏感凭据；失败会抛 SecureStoreException
+      await SecureStore.instance.writeAiApiKey(pendingApiKey);
+
+      // 旧明文 key 若仍残留，主动清掉一次（双保险）
+      await prefs.remove('ai_api_key');
+
+      // 让 ChatScreen 立即拿到新配置
+      ref.invalidate(aiServiceProvider);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI 配置已保存'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } on SecureStoreException catch (e) {
+      // 给用户三选一：重试 / 改用本地加密 / 取消
+      if (!mounted) return;
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.lock_outline, color: Colors.red, size: 48),
+          title: const Text('安全存储不可用'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '无法把 API Key 写入系统 Keychain。',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '原因：${e.cause}',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '可改用 "本地加密保存"（AES-GCM）：兼容性高，但安全等级略低于系统 Keychain。',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'retry'),
+              child: const Text('重试'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'fallback'),
+              child: const Text('改用本地加密'),
+            ),
+          ],
         ),
       );
+
+      if (choice == 'fallback') {
+        try {
+          await SecureStore.instance
+              .switchToAppEncryptedAndWrite(_aiApiKeyKey, pendingApiKey);
+          ref.invalidate(aiServiceProvider);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('已用本地加密保存 AI 配置'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        } catch (e2) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('本地加密也保存失败：$e2'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } else if (choice == 'retry') {
+        // 让用户改完再点一次保存
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('请检查后重新点击保存'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存失败：$e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
+
+  /// SecureStore 内部写入用的 ai api key。与 SecureStore._kAiApiKey 一致。
+  static const String _aiApiKeyKey = 'secure.ai_api_key';
 
   Future<void> _testConnection() async {
     setState(() => _isTesting = true);
@@ -378,8 +488,17 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
                         ),
                         const SizedBox(width: 12),
                         FilledButton(
-                          onPressed: _saveConfig,
-                          child: const Text('保存配置'),
+                          onPressed: _isSaving ? null : _saveConfig,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('保存配置'),
                         ),
                       ],
                     ),

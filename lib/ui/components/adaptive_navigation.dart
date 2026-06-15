@@ -57,6 +57,12 @@ class AdaptiveNavigation extends StatelessWidget {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 600;
 
+        // 用 IndexedStack 让所有 Tab 的 State 常驻：
+        // - 切走再回来不丢滚动位置 / 表单输入；
+        // - ChatScreen 的内存态（待确认 actions 等）也得以保留；
+        //   而其聊天历史本身已通过 Isar 持久化，二者叠加体验更稳。
+        final body = IndexedStack(index: selectedIndex, children: children);
+
         if (isWide) {
           return Scaffold(
             body: Row(
@@ -68,14 +74,14 @@ class AdaptiveNavigation extends StatelessWidget {
                   destinations: _railDestinations,
                 ),
                 const VerticalDivider(thickness: 1, width: 1),
-                Expanded(child: children[selectedIndex]),
+                Expanded(child: body),
               ],
             ),
           );
         }
 
         return Scaffold(
-          body: children[selectedIndex],
+          body: body,
           bottomNavigationBar: NavigationBar(
             selectedIndex: selectedIndex,
             onDestinationSelected: onDestinationSelected,
