@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/ai_agent.dart';
 import '../../services/ai_service.dart';
+import '../../services/notification_service.dart';
 import '../../providers/task_providers.dart';
 import '../../providers/isar_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../data/task_dao.dart';
 import '../../data/chat_message_dao.dart';
 import '../../models/chat_message_entity.dart';
+import '../../models/task.dart';
 import 'ai_settings_screen.dart';
 
 /// 聊天页 — 已迁到 Isar 持久化（PLAN-AI-001-5）。
@@ -77,12 +79,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _sendMessage({String? overrideText}) async {
     final text = (overrideText ?? _messageController.text).trim();
-    if (text.isEmpty || _isSending) return;
+    if (text.isEmpty) return;
+    if (_isSending) {
+      // 上一条仍在发送：给一条提示，不清输入框
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('上一条还在发送中…')),
+        );
+      }
+      return;
+    }
 
+    // 立刻置 sending=true 让按钮变灰；避免点击与异步写库间的视觉延迟
+    setState(() {
+      _isSending = true;
+      _lastError = null;
+    });
     if (overrideText == null) {
       _messageController.clear();
     }
-    setState(() => _lastError = null);
     _lastUserMessage = text;
 
     // 立刻把 user 消息入库；UI 由 streamProvider 自动刷新
@@ -101,11 +116,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             : '请先在设置中配置 AI 助手的 API 参数。',
         visibleToModel: false,
       );
+      if (mounted) setState(() => _isSending = false);
       _scrollToBottom();
       return;
     }
 
-    setState(() => _isSending = true);
     try {
       // 任务上下文
       final tasks = ref.read(activeTasksProvider).valueOrNull ?? const [];
@@ -150,20 +165,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       // 自动执行
       final autoResults = <ActionResult>[];
+      final autoTouched = <Task>[];
       if (autoActions.isNotEmpty) {
         final isar = ref.read(isarProvider).valueOrNull;
         if (isar != null) {
           final dao = TaskDao(isar);
           for (final action in autoActions) {
-            autoResults.add(await executeAction(action, dao));
+            final res = await executeAction(action, dao);
+            autoResults.add(res);
+            if (res.success && res.data is Task) {
+              autoTouched.add(res.data as Task);
+            }
           }
         }
       }
+      // reminders / rrule 类自动操作（理论上当前都是 needsConfirmation=true，
+      // 但保留这一步以防今后规则变化）
+      if (autoTouched.isNotEmpty) {
+        await NotificationService().rescheduleAllReminders(autoTouched);
+      }
 
-      // 拼接回复 + 自动结果
+      // 拼接回复 + 自动结果 + 未知动作 warnings
       final replyBuffer = StringBuffer(response.reply);
       for (final ar in autoResults) {
         replyBuffer.write(ar.success ? '\n\n✓ ${ar.message}' : '\n\n✗ ${ar.message}');
+      }
+      if (response.warnings.isNotEmpty) {
+        replyBuffer.write(
+          '\n\n（已忽略未知动作：${response.warnings.join(', ')}）',
+        );
       }
       final assistantText = replyBuffer.toString();
       await _appendDb(
@@ -203,8 +233,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final dao = TaskDao(isar);
     final results = <ActionResult>[];
+    final touched = <Task>[];
     for (final a in actions) {
-      results.add(await executeAction(a, dao));
+      final res = await executeAction(a, dao);
+      results.add(res);
+      if (res.success && res.data is Task) {
+        touched.add(res.data as Task);
+      }
+    }
+
+    // 提醒/重复规则会改变通知；统一刷新一次
+    if (touched.isNotEmpty) {
+      await NotificationService().rescheduleAllReminders(touched);
     }
 
     final buf = StringBuffer('已执行操作：\n');

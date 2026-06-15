@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/ai_service.dart';
 import '../../services/llm_provider_registry.dart';
 import '../../services/secure_store.dart';
+import '../../providers/chat_provider.dart';
 
 class AISettingsScreen extends ConsumerStatefulWidget {
   const AISettingsScreen({super.key});
@@ -19,6 +20,7 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   String _selectedProviderId = 'custom';
   bool _isCustomProvider = true;
   bool _isTesting = false;
+  bool _isSaving = false;
   bool _isFetchingModels = false;
   bool _fetchModelsFailed = false;
   List<String> _fetchedModels = [];
@@ -93,22 +95,52 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
   }
 
   Future<void> _saveConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('ai_provider_id', _selectedProviderId);
-    await SecureStore.instance.writeAiApiKey(_apiKeyController.text.trim());
-    await prefs.setString('ai_api_url', _apiUrlController.text.trim());
-    await prefs.setString('ai_model', _modelController.text.trim());
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('ai_provider_id', _selectedProviderId);
+      await prefs.setString('ai_api_url', _apiUrlController.text.trim());
+      await prefs.setString('ai_model', _modelController.text.trim());
 
-    // 旧明文 key 若仍残留，主动清掉一次（双保险，迁移漏掉时兜底）
-    await prefs.remove('ai_api_key');
+      // 写敏感凭据；失败会抛 SecureStoreException
+      await SecureStore.instance.writeAiApiKey(_apiKeyController.text.trim());
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('AI 配置已保存'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // 旧明文 key 若仍残留，主动清掉一次（双保险）
+      await prefs.remove('ai_api_key');
+
+      // 让 ChatScreen 立即拿到新配置
+      ref.invalidate(aiServiceProvider);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI 配置已保存'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } on SecureStoreException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存失败：${e.cause}（API Key 未写入）'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存失败：$e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -383,8 +415,17 @@ class _AISettingsScreenState extends ConsumerState<AISettingsScreen> {
                         ),
                         const SizedBox(width: 12),
                         FilledButton(
-                          onPressed: _saveConfig,
-                          child: const Text('保存配置'),
+                          onPressed: _isSaving ? null : _saveConfig,
+                          child: _isSaving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('保存配置'),
                         ),
                       ],
                     ),

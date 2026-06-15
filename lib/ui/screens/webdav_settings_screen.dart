@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/webdav_provider.dart';
 import '../../services/webdav_service.dart';
+import '../../services/secure_store.dart';
 import '../../providers/isar_provider.dart';
 import '../../data/task_dao.dart';
 
@@ -72,11 +73,32 @@ class _WebDAVSettingsScreenState extends ConsumerState<WebDAVSettingsScreen> {
       return;
     }
 
-    await ref.read(webdavConfigProvider.notifier).saveConfig(config);
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('配置已保存')));
+    try {
+      await ref.read(webdavConfigProvider.notifier).saveConfig(config);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('配置已保存')));
+      }
+    } on SecureStoreException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存失败：${e.cause}（密码未写入）'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存失败：$e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

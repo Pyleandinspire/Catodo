@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/task.dart';
 import '../../data/task_dao.dart';
 import '../../providers/isar_provider.dart';
 import '../../providers/task_providers.dart';
+import '../../providers/chat_provider.dart';
 import '../../services/notification_service.dart';
+import '../../services/nlp_service.dart';
+import '../../services/nlp_ai_service.dart';
 
 class TaskFormScreen extends ConsumerStatefulWidget {
   final Task? task;
@@ -31,6 +36,13 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   bool _useCustomGroup = false;
   List<DateTime> _reminderTimes = [];
 
+  // 标题 NLP 预览
+  Timer? _nlpDebounce;
+  ParsedTask? _nlpPreview;
+  bool _nlpPreviewDismissed = false;
+  bool _isAiParsing = false;
+  AiParsedTask? _aiPreview;
+
   @override
   void initState() {
     super.initState();
@@ -51,10 +63,126 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
         _repeatType = 'monthly';
       }
     }
+    _titleController.addListener(_onTitleChanged);
+  }
+
+  void _onTitleChanged() {
+    _nlpDebounce?.cancel();
+    _nlpDebounce = Timer(const Duration(milliseconds: 300), _runNlpPreview);
+  }
+
+  void _runNlpPreview() {
+    if (!mounted) return;
+    final text = _titleController.text;
+    if (text.trim().isEmpty || _nlpPreviewDismissed) {
+      setState(() => _nlpPreview = null);
+      return;
+    }
+    final parsed = NlpService.parseNaturalLanguage(text);
+    setState(() {
+      // 仅当解析出 dueDate 才显示预览（避免对纯标题打扰）
+      _nlpPreview = parsed.dueDate != null ? parsed : null;
+    });
+  }
+
+  void _dismissNlpPreview() {
+    setState(() {
+      _nlpPreview = null;
+      _aiPreview = null;
+      _nlpPreviewDismissed = true;
+    });
+  }
+
+  void _applyNlpPreview() {
+    final preview = _nlpPreview;
+    if (preview == null || preview.dueDate == null) return;
+    setState(() {
+      _titleController.removeListener(_onTitleChanged);
+      _titleController.text = preview.title;
+      _titleController.addListener(_onTitleChanged);
+      _dueDate = preview.dueDate;
+      // 默认加一个截止前 30 分钟的提醒（如果还没有任何提醒）
+      if (_reminderTimes.isEmpty) {
+        _reminderTimes.add(
+          preview.dueDate!.subtract(const Duration(minutes: 30)),
+        );
+        _reminderTimes.sort();
+      }
+      _nlpPreview = null;
+    });
+  }
+
+  void _applyAiPreview() {
+    final p = _aiPreview;
+    if (p == null) return;
+    setState(() {
+      _titleController.removeListener(_onTitleChanged);
+      _titleController.text = p.title;
+      _titleController.addListener(_onTitleChanged);
+      if (p.dueDate != null) _dueDate = p.dueDate;
+      if (p.priority != null) _priority = p.priority!;
+      if (p.rrule != null && p.rrule!.isNotEmpty) {
+        _isRepeat = true;
+        if (p.rrule!.contains('DAILY')) {
+          _repeatType = 'daily';
+        } else if (p.rrule!.contains('WEEKLY')) {
+          _repeatType = 'weekly';
+        } else if (p.rrule!.contains('MONTHLY')) {
+          _repeatType = 'monthly';
+        }
+        final m = RegExp(r'INTERVAL=(\d+)').firstMatch(p.rrule!);
+        if (m != null) {
+          _repeatInterval = int.tryParse(m.group(1)!) ?? 1;
+          _repeatIntervalController.text = '$_repeatInterval';
+        }
+      }
+      if (p.dueDate != null && p.reminderOffsetsMin != null) {
+        for (final off in p.reminderOffsetsMin!) {
+          final t = p.dueDate!.subtract(Duration(minutes: off));
+          if (!_reminderTimes.any((x) => x.isAtSameMomentAs(t))) {
+            _reminderTimes.add(t);
+          }
+        }
+        _reminderTimes.sort();
+      }
+      _aiPreview = null;
+      _nlpPreview = null;
+    });
+  }
+
+  Future<void> _runAiParse() async {
+    if (_isAiParsing) return;
+    final ai = ref.read(aiServiceProvider).valueOrNull;
+    if (ai == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI 未配置；请到设置页配置后重试')),
+        );
+      }
+      return;
+    }
+    setState(() => _isAiParsing = true);
+    try {
+      final svc = NlpAiService(ai);
+      final out = await svc.parse(_titleController.text);
+      if (mounted) {
+        setState(() => _aiPreview = out);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI 解析失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isAiParsing = false);
+    }
   }
 
   @override
   void dispose() {
+    _nlpDebounce?.cancel();
+    _titleController.removeListener(_onTitleChanged);
     _titleController.dispose();
     _descriptionController.dispose();
     _customGroupController.dispose();
@@ -222,8 +350,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                   suffixIcon: _titleController.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.lightbulb),
-                          onPressed: () {},
-                          tooltip: '智能解析',
+                          onPressed: _runAiParse,
+                          tooltip: '用 AI 解析',
                         )
                       : null,
                 ),
@@ -235,6 +363,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                 },
                 autofocus: true,
               ),
+              if (_nlpPreview != null) _buildNlpPreviewCard(),
+              if (_aiPreview != null) _buildAiPreviewCard(),
 
               const SizedBox(height: 16),
 
@@ -781,5 +911,118 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
         .map((t) => t.trim())
         .where((t) => t.isNotEmpty)
         .toList();
+  }
+
+  String _fmtDateTimeShort(DateTime d) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final today = DateTime.now();
+    final isSameDay = d.year == today.year && d.month == today.month && d.day == today.day;
+    final tomorrow = today.add(const Duration(days: 1));
+    final isTomorrow = d.year == tomorrow.year && d.month == tomorrow.month && d.day == tomorrow.day;
+    final dateLabel = isSameDay
+        ? '今天'
+        : isTomorrow
+            ? '明天'
+            : '${d.month}/${d.day}';
+    return '$dateLabel ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  Widget _buildNlpPreviewCard() {
+    final preview = _nlpPreview!;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFE3F2FD),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF90CAF9)),
+        ),
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            const Icon(Icons.event, size: 18, color: Color(0xFF1565C0)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '识别到：${_fmtDateTimeShort(preview.dueDate!)} · 置信度 ${preview.confidence}%',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF0D47A1)),
+              ),
+            ),
+            TextButton(onPressed: _applyNlpPreview, child: const Text('应用')),
+            IconButton(
+              tooltip: '用 AI 解析',
+              onPressed: _isAiParsing ? null : _runAiParse,
+              icon: _isAiParsing
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 1.5),
+                    )
+                  : const Icon(Icons.auto_awesome, size: 18),
+            ),
+            IconButton(
+              tooltip: '关闭',
+              onPressed: _dismissNlpPreview,
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAiPreviewCard() {
+    final p = _aiPreview!;
+    final parts = <String>[];
+    if (p.dueDate != null) parts.add('截止 ${_fmtDateTimeShort(p.dueDate!)}');
+    if (p.priority != null) parts.add('优先级 ${p.priority}');
+    if (p.rrule != null) parts.add('重复 ${p.rrule}');
+    if (p.reminderOffsetsMin != null && p.reminderOffsetsMin!.isNotEmpty) {
+      parts.add('提醒前 ${p.reminderOffsetsMin!.join('/')} 分钟');
+    }
+    final summary = parts.isEmpty ? '未识别到具体字段' : parts.join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3E5F5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFCE93D8)),
+        ),
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 18, color: Color(0xFF6A1B9A)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'AI 解析：${p.title}',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF4A148C)),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  tooltip: '关闭',
+                  onPressed: () => setState(() => _aiPreview = null),
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(summary, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _applyAiPreview,
+                child: const Text('应用'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
