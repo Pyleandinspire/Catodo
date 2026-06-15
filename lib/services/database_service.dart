@@ -40,6 +40,7 @@ class DatabaseService {
     }
 
     return _instance!;
+    return Future.value(null);
   }
 
   static Future<void> close() async {

@@ -77,7 +77,8 @@ dependencies:
   # Share (for .ics export)
   share_plus: ^9.0.0
 
-  # Permission Handler (for Android notification permission)
+  # Permission Handler (for Android notification permission only)
+  # Windows and macOS don't need runtime notification permissions
   permission_handler: ^11.3.0
 
   # Window Manager (desktop window configuration)

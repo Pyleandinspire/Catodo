@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart'
+    if (dart.library.io) 'permission_handler_stub.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:isar/isar.dart';
 import 'ui/screens/task_list_screen.dart';
