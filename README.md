@@ -12,7 +12,7 @@ A cross-platform task management app built with Flutter. Manage your to-dos with
 - **Smart Views** - List view, day view (focus today / hide overdue), and Eisenhower Matrix for priority-based organization
 - **Recurring Tasks** - Set daily, weekly, or monthly repeat rules; next instance auto-generates on completion
 - **WebDAV Sync** - Incremental cross-device sync with three conflict-resolution modes (auto-merge, local-first, remote-first) and soft-delete propagation
-- **AI Assistant** - Chat with an LLM agent to create, update, decompose, and manage tasks through natural language
+- **AI Assistant** - Chat with an LLM agent to create, update, decompose, and manage tasks through natural language, with optimized system prompts and persistent chat history
 - **Data Import/Export** - `.ics` calendar format and `.catodo` full-backup format (with optional sensitive settings)
 - **Local Notifications** - Scheduled reminders that persist across app restarts
 - **Multi-Platform** - Android, iOS, Windows, macOS, Linux, and Web
@@ -108,6 +108,15 @@ flutter build web --release
 3. Navigate to the **AI** tab in the bottom navigation
 4. Chat naturally - the AI agent can create tasks, decompose them, add tags, set priorities, and more
 5. Low-risk actions (create, tag, group, priority) execute automatically; high-risk actions (update, complete, delete) require your confirmation
+6. **Chat history is persistent** - conversations are saved locally and restored when you reopen the app. Use the **Clear** button in the header to wipe history when needed.
+
+#### Prompt Optimizations
+
+The AI system prompts have been refined for better LLM interaction:
+
+- **Agent prompt**: Structured action definitions with pronoun resolution rules; the agent asks for clarification when unsure instead of guessing
+- **Task decomposition**: Added decomposition principles (measurable, logical ordering, time estimation limits) for more actionable subtasks
+- **Overdue task support**: Three-stage framework (empathize → guide → act) with tighter word limits for concise, warm responses
 
 ### Data Import/Export
 
@@ -157,9 +166,11 @@ lib/
 ├── main.dart                    # App entry, navigation, reminder scheduling
 ├── models/
 │   ├── task.dart                # Task model (Isar Collection)
+│   ├── chat_record.dart         # Chat history model (Isar Collection)
 │   └── filter.dart              # TaskFilter model
 ├── data/
-│   └── task_dao.dart            # Data access object
+│   ├── task_dao.dart            # Task data access object
+│   └── chat_dao.dart            # Chat history data access object (auto-cleans records > 200)
 ├── services/
 │   ├── database_service.dart    # Isar singleton management
 │   ├── webdav_service.dart      # WebDAV sync service
