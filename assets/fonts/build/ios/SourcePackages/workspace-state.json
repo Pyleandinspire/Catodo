@@ -1,0 +1,55 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "flutter_local_notifications-21.0.0",
+          "kind" : "fileSystem",
+          "location" : "/Users/pyle/workspace/Catodo/ios/Flutter/ephemeral/Packages/.packages/flutter_local_notifications-21.0.0",
+          "name" : "flutter_local_notifications"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/pyle/workspace/Catodo/ios/Flutter/ephemeral/Packages/.packages/flutter_local_notifications-21.0.0"
+        },
+        "subpath" : "flutter_local_notifications-21.0.0"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "flutterframework",
+          "kind" : "fileSystem",
+          "location" : "/Users/pyle/workspace/Catodo/ios/Flutter/ephemeral/Packages/.packages/FlutterFramework",
+          "name" : "FlutterFramework"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/pyle/workspace/Catodo/ios/Flutter/ephemeral/Packages/.packages/FlutterFramework"
+        },
+        "subpath" : "flutterframework"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "shared_preferences_foundation-2.5.6",
+          "kind" : "fileSystem",
+          "location" : "/Users/pyle/workspace/Catodo/ios/Flutter/ephemeral/Packages/.packages/shared_preferences_foundation-2.5.6",
+          "name" : "shared_preferences_foundation"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/pyle/workspace/Catodo/ios/Flutter/ephemeral/Packages/.packages/shared_preferences_foundation-2.5.6"
+        },
+        "subpath" : "shared_preferences_foundation-2.5.6"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

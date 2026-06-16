@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:isar/isar.dart';
 import 'ui/screens/task_list_screen.dart';
@@ -12,6 +11,8 @@ import 'ui/screens/eisenhower_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/components/adaptive_navigation.dart';
+import 'providers/theme_provider.dart';
+import 'ui/theme/app_theme.dart';
 import 'services/notification_service.dart';
 import 'services/secrets_migration.dart';
 import 'providers/isar_provider.dart';
@@ -42,15 +43,6 @@ void main() {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 配置系统 UI 样式（Android 15+ edge-to-edge 适配）
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // 先启动 Flutter UI，避免异步初始化阻塞渲染
@@ -77,15 +69,8 @@ Future<void> _initializeServices() async {
   // 一次性迁移旧 SP 明文凭据到 SecureStore（失败也不阻塞启动）
   await migrateLegacySecretsIfNeeded();
 
-  // 请求通知权限（Android 13+ 需要运行时权限）
-  try {
-    await Permission.notification.request();
-  } catch (_) {
-    // 权限请求失败不影响启动（旧版本 Android 或特殊设备）
-  }
-
-  // 初始化通知服务（内部有 try-catch 保护）
-  // 使用 Future.microtask 确保在 main 完成后执行
+  // 初始化通知服务（内部按平台请求权限：Android 13+ / iOS / macOS）
+  // Windows / Linux 不需要运行时通知权限
   try {
     await NotificationService().initialize();
   } catch (_) {
@@ -140,9 +125,12 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp(
       title: 'Catodo',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+      theme: AppTheme.buildLight(),
+      darkTheme: AppTheme.buildDark(),
+      themeMode: themeMode,
       home: Consumer(
         builder: (context, ref, child) {
           final isarAsync = ref.watch(isarProvider);

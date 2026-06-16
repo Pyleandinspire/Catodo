@@ -21,6 +21,7 @@
 | A2 | ✅ | API Key 安全存储 + 错误分级提示 | PLAN-AI-001-2 (2026-06-15) |
 | A3 | ✅ | AI 任务能力扩展（reminders / rrule / update_task 字段补齐）+ NLP 实时预览 + 发送按钮反馈修复 | PLAN-AI-001-3 (2026-06-15) |
 | A4 | ✅ | AI 时间安排优化助手（看当前任务 → 给优化建议 → 自动调整时间 / 自动拆解） | PLAN-AI-001-4 (2026-06-15) |
+| A2d | ✅ | 移除 permission_handler + flutter_local_notifications/timezone 升级 + 必修小修 | PLAN-AI-001-8 (2026-06-15) |
 | A5a | ✅ | 聊天历史持久化（Isar 单会话）+ 欢迎语/AIService 加载竞态修复 | PLAN-AI-001-5 (2026-06-15) |
 | A2b | ✅ | AI 设置保存失败修复 + Agent 字段更新语义（null 清空）+ 测试加固 | PLAN-AI-001-6 (2026-06-15) |
 | A2c | ✅ | 修 macOS / iOS Keychain 写不进去 + 应用级 AES-GCM 加密兜底 | PLAN-AI-001-7 (2026-06-15) |

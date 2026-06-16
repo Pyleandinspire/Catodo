@@ -11,7 +11,6 @@ class EisenhowerScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tasks = ref.watch(filteredTasksProvider);
 
-    // 按艾森豪威尔矩阵分组
     List<Task> urgentImportant = [];
     List<Task> notUrgentImportant = [];
     List<Task> urgentNotImportant = [];
@@ -19,254 +18,92 @@ class EisenhowerScreen extends ConsumerWidget {
 
     for (final task in tasks) {
       if (task.isCompleted) continue;
-      
       bool isUrgent = task.dueDate != null && task.dueDate!.isBefore(DateTime.now().add(const Duration(days: 2)));
       bool isImportant = task.priority >= 2;
-
-      if (isUrgent && isImportant) {
-        urgentImportant.add(task);
-      } else if (!isUrgent && isImportant) {
-        notUrgentImportant.add(task);
-      } else if (isUrgent && !isImportant) {
-        urgentNotImportant.add(task);
-      } else {
-        notUrgentNotImportant.add(task);
-      }
-    }
-
-    Widget _buildQuadrant({
-      required String title,
-      required String subtitle,
-      required List<Task> tasks,
-      required Color color,
-      required Color bgColor,
-    }) {
-      return Expanded(
-        child: Container(
-          margin: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: tasks.isEmpty
-                    ? Center(
-                        child: Text(
-                          '暂无任务',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        itemCount: tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = tasks[index];
-                          return Card(
-                            elevation: 1,
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            child: InkWell(
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => TaskFormScreen(task: task),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      task.title,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    if (task.dueDate != null)
-                                      Text(
-                                        '截止: ${task.dueDate!.month}/${task.dueDate!.day}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[500],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              if (tasks.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${tasks.length} 个任务',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: color,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
+      if (isUrgent && isImportant) { urgentImportant.add(task); }
+      else if (!isUrgent && isImportant) { notUrgentImportant.add(task); }
+      else if (isUrgent && !isImportant) { urgentNotImportant.add(task); }
+      else { notUrgentNotImportant.add(task); }
     }
 
     return Scaffold(
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 头部区域
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '艾森豪威尔矩阵',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  Text(
-                    '按紧急和重要性分类',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Text('艾森豪威尔矩阵', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             ),
-
-            // 矩阵网格
             Expanded(
-              child: tasks.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(
-                            Icons.grid_3x3,
-                            size: 64,
-                            color: Color(0xFFE0E0E0),
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            '暂无任务',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Color(0xFF9E9E9E),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : Column(
-                      children: [
-                        // 第一行：重要
-                        Expanded(
-                          child: Row(
-                            children: [
-                              _buildQuadrant(
-                                title: '紧急且重要',
-                                subtitle: '立即处理',
-                                tasks: urgentImportant,
-                                color: Colors.red,
-                                bgColor: Colors.red[50]!,
-                              ),
-                              _buildQuadrant(
-                                title: '不紧急但重要',
-                                subtitle: '规划时间',
-                                tasks: notUrgentImportant,
-                                color: Colors.orange,
-                                bgColor: Colors.orange[50]!,
-                              ),
-                            ],
-                          ),
-                        ),
-                        // 第二行：不重要
-                        Expanded(
-                          child: Row(
-                            children: [
-                              _buildQuadrant(
-                                title: '紧急但不重要',
-                                subtitle: '授权他人',
-                                tasks: urgentNotImportant,
-                                color: Colors.blue,
-                                bgColor: Colors.blue[50]!,
-                              ),
-                              _buildQuadrant(
-                                title: '不紧急不重要',
-                                subtitle: '尽量避免',
-                                tasks: notUrgentNotImportant,
-                                color: Colors.grey,
-                                bgColor: Colors.grey[100]!,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Column(children: [
+                Expanded(child: Row(children: [
+                  Expanded(child: _quadrant(context, '重要·紧急', '重要·紧急', urgentImportant, const Color(0xFFFFE0DB))),
+                  Expanded(child: _quadrant(context, '重要·不紧急', '重要·不紧急', notUrgentImportant, const Color(0xFFEDE7FE))),
+                ])),
+                const Divider(height: 1),
+                Expanded(child: Row(children: [
+                  Expanded(child: _quadrant(context, '紧急·不重要', '紧急·不重要', urgentNotImportant, const Color(0xFFFFF2CC))),
+                  Expanded(child: _quadrant(context, '不重要·不紧急', '不重要·不紧急', notUrgentNotImportant, const Color(0xFFF5F5F5))),
+                ])),
+              ]),
             ),
+          ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const TaskFormScreen()),
-        ),
-        backgroundColor: Colors.blue,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, size: 28),
+    );
+  }
+
+  Widget _quadrant(BuildContext context, String title, String subtitle, List<Task> tasks, Color bg) {
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+          child: Row(children: [
+            Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            const Spacer(),
+            if (tasks.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(color: Colors.black.withAlpha(15), borderRadius: BorderRadius.circular(8)),
+                child: Text('${tasks.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+              ),
+          ]),
+        ),
+        Expanded(
+          child: tasks.isEmpty
+              ? Center(child: Text('暂无', style: TextStyle(fontSize: 12, color: Colors.grey.withAlpha(100))))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  itemCount: tasks.length,
+                  itemBuilder: (_, i) {
+                    final t = tasks[i];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: InkWell(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TaskFormScreen(task: t))),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: Colors.white.withAlpha(179), borderRadius: BorderRadius.circular(10)),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(t.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                            if (t.dueDate != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${t.dueDate!.month}/${t.dueDate!.day}', style: const TextStyle(fontSize: 11, color: Color(0xFF757575)))),
+                          ]),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ]),
     );
   }
 }
