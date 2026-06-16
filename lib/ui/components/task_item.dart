@@ -11,7 +11,17 @@ import 'app_due_pill.dart';
 class TaskItem extends ConsumerWidget {
   final Task task;
   final VoidCallback onTap;
-  const TaskItem({super.key, required this.task, required this.onTap});
+  final void Function(Task)? onHeartTap;
+  const TaskItem({super.key, required this.task, required this.onTap, this.onHeartTap});
+
+  static const _comfortPhrases = ['需要安慰', '聊聊吧', '有点焦虑', '求助 AI', '帮帮我'];
+  String get _comfortText => _comfortPhrases[DateTime.now().millisecondsSinceEpoch % _comfortPhrases.length];
+
+  bool _isOverdue(Task t) {
+    if (t.isCompleted || t.dueDate == null) return false;
+    final now = DateTime.now();
+    return t.dueDate!.isBefore(DateTime(now.year, now.month, now.day));
+  }
 
   Future<void> _toggleComplete(WidgetRef ref, Task task) async {
     final isar = await ref.read(isarProvider.future);
@@ -119,6 +129,37 @@ class TaskItem extends ConsumerWidget {
                             Padding(padding: const EdgeInsets.only(top: 4), child: Text(t.description!, style: TextStyle(fontSize: 14, color: onSurfaceVariant, decoration: isCompleted ? TextDecoration.lineThrough : null), maxLines: 2, overflow: TextOverflow.ellipsis)),
                           Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
                             if (t.dueDate != null) AppDuePill(dueDate: t.dueDate),
+                            // 逾期任务情绪支持按钮
+                            if (_isOverdue(t) && onHeartTap != null)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Material(
+                                  elevation: 3,
+                                  borderRadius: BorderRadius.circular(14),
+                                  color: const Color(0xFFFFE0DB),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(14),
+                                    onTap: () => onHeartTap!(t),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFFFCDD2).withAlpha(100),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        _comfortText,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFE53935)),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             if (t.dueDate != null && t.groupName != null) const SizedBox(width: 12),
                             if (t.groupName != null) ...[Icon(AppIcons.folder, size: 14, color: onSurfaceVariant), const SizedBox(width: 4), Text(t.groupName!, style: TextStyle(fontSize: 13, color: onSurfaceVariant))],
                             if (t.rrule != null) const Padding(padding: EdgeInsets.only(left: 8), child: Icon(AppIcons.repeat, size: 14, color: Colors.blue)),

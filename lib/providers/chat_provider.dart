@@ -50,14 +50,18 @@ final aiServiceProvider = FutureProvider<AIService?>((ref) async {
   }
 });
 
+/// 从外部（如 task_list_screen 的逾期按钮）传来的初始消息。
+/// ChatScreen 在首帧渲染后读取并自动发送，发送后清空。
+final chatInitialMessageProvider = StateProvider<String?>((ref) => null);
+
+/// 全局 Tab 切换：task_list_screen 等可通过此 Provider 切到聊天 Tab（index=2）。
+final selectedTabProvider = StateProvider<int>((ref) => 0);
+
 /// 把持久化消息映射为可发给 LLM 的 [ChatTurn] 列表。
 ///
-/// 规则：
-/// - 过滤 `visibleToModel == false`；
-/// - role 映射：'user' → ChatTurn.user；
-///   'assistant' / 'system_summary' → ChatTurn.assistant；
-///   其他角色（保险起见）按 assistant 处理；
-/// - 输入应已按 `createdAt` 升序，输出原序保留。
+/// **方案 F**：仅保留 user 角色消息。assistant / system_summary 等不进 LLM 上下文。
+/// 防止 LLM 看到历史执行记录后重复之前的操作。
+/// LLM 每轮都通过注入的 `buildTaskContext` 获取最新任务状态，不依赖历史。
 @visibleForTesting
 List<ChatTurn> messagesToTurns(Iterable<ChatMessageEntity> messages) {
   final out = <ChatTurn>[];
@@ -65,9 +69,8 @@ List<ChatTurn> messagesToTurns(Iterable<ChatMessageEntity> messages) {
     if (!m.visibleToModel) continue;
     if (m.role == 'user') {
       out.add(ChatTurn.user(m.content));
-    } else {
-      out.add(ChatTurn.assistant(m.content));
     }
+    // 所有非 user 消息不进 LLM
   }
   return out;
 }

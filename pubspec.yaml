@@ -83,6 +83,9 @@ dependencies:
   # Lucide Icons (PLAN-UI-001-2)
   lucide_icons_flutter: ^3.1.14
 
+  # Image Viewer (PLAN-AI-002-2)
+  photo_view: ^0.15.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

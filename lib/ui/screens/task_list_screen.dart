@@ -10,6 +10,7 @@ import '../../services/webdav_service.dart';
 import '../../providers/webdav_provider.dart';
 import '../../data/task_dao.dart';
 import '../../providers/isar_provider.dart';
+import '../../providers/chat_provider.dart';
 
 class TaskListScreen extends ConsumerWidget {
   const TaskListScreen({super.key});
@@ -61,7 +62,7 @@ class TaskListScreen extends ConsumerWidget {
                       SizedBox(height: 8),
                       Text('点击下方按钮添加新任务', style: TextStyle(fontSize: 14, color: Color(0xFFBDBDBD))),
                     ]))
-                  : _buildTaskList(context, tasks),
+                  : _buildTaskList(ref, context, tasks),
             ),
           ],
         ),
@@ -105,7 +106,7 @@ class TaskListScreen extends ConsumerWidget {
     ));
   }
 
-  Widget _buildTaskList(BuildContext context, List tasks) {
+  Widget _buildTaskList(WidgetRef ref, BuildContext context, List tasks) {
     final now = DateTime.now();
     final today0 = DateTime(now.year, now.month, now.day);
     final weekEnd = today0.add(const Duration(days: 7));
@@ -131,7 +132,12 @@ class TaskListScreen extends ConsumerWidget {
     if (count == 0) {
       return ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 8), itemCount: tasks.length, itemBuilder: (ctx, i) {
         final task = tasks[i];
-        return TaskItem(task: task, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TaskFormScreen(task: task))));
+        return TaskItem(task: task,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TaskFormScreen(task: task))),
+                    onHeartTap: (t) {
+                    ref.read(chatInitialMessageProvider.notifier).state = '我有个任务「${t.title}」已经逾期了，给我一点支持和建议';
+                    ref.read(selectedTabProvider.notifier).state = 2;
+                  });
       });
     }
 
@@ -153,7 +159,12 @@ class TaskListScreen extends ConsumerWidget {
           final ti = index - cursor;
           if (ti < list.length) {
             final task = list[ti];
-            return TaskItem(task: task, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TaskFormScreen(task: task))));
+            return TaskItem(task: task,
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TaskFormScreen(task: task))),
+                    onHeartTap: (t) {
+                    ref.read(chatInitialMessageProvider.notifier).state = '我有个任务「${t.title}」已经逾期了，给我一点支持和建议';
+                    ref.read(selectedTabProvider.notifier).state = 2;
+                  });
           }
           cursor += list.length;
         }

@@ -88,8 +88,6 @@ class CatodoApp extends ConsumerStatefulWidget {
 }
 
 class _CatodoAppState extends ConsumerState<CatodoApp> {
-  int _selectedIndex = 0;
-
   static const List<Widget> _screens = [
     TaskListScreen(),
     EisenhowerScreen(),
@@ -98,9 +96,7 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
   ];
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    ref.read(selectedTabProvider.notifier).state = index;
   }
 
   void _rescheduleReminders(Isar isar) async {
@@ -143,7 +139,7 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
           return isarAsync.when(
             data: (isar) {
               return AdaptiveNavigation(
-                selectedIndex: _selectedIndex,
+                selectedIndex: ref.watch(selectedTabProvider),
                 onDestinationSelected: _onItemTapped,
                 children: _screens,
               );
