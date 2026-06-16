@@ -214,176 +214,141 @@ class DataIoActions {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
-  final IconData icon;
-
-  const _SectionTitle({required this.title, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: colorScheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DataActionCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBgColor;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _DataActionCard({
-    required this.icon,
-    required this.iconColor,
-    required this.iconBgColor,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.65)),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: iconBgColor,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(icon, color: iconColor, size: 26),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.onSurface,
-                          ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: colorScheme.onSurfaceVariant),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class DataManagementScreen extends ConsumerWidget {
   const DataManagementScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(title: const Text('数据管理')),
+      appBar: AppBar(
+        title: const Text('数据管理'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.all(16),
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(22),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text(
+              '导入',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black54,
+              ),
             ),
-            child: Row(
-              children: [
-                Icon(Icons.shield_rounded, color: colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '建议定期导出 .catodo 完整格式，换设备或重装应用时恢复更方便。',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface,
-                        ),
-                  ),
+          ),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ListTile(
+              leading: Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE3F2FD),
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
                 ),
-              ],
+                child: const Icon(Icons.file_download, color: Colors.blue),
+              ),
+              title: const Text('导入 .ics 文件'),
+              subtitle: const Text('从日历文件导入任务'),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                color: Color(0xFFBDBDBD),
+              ),
+              onTap: () => DataIoActions.importIcs(context, ref),
             ),
           ),
-          const _SectionTitle(title: '导入', icon: Icons.file_download_rounded),
-          _DataActionCard(
-            icon: Icons.event_note_rounded,
-            iconColor: Colors.blue,
-            iconBgColor: const Color(0xFFE3F2FD),
-            title: '导入 .ics 文件',
-            subtitle: '从日历文件导入任务',
-            onTap: () => DataIoActions.importIcs(context, ref),
+          const SizedBox(height: 8),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ListTile(
+              leading: Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE3F2FD),
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                ),
+                child: const Icon(Icons.file_download, color: Colors.blue),
+              ),
+              title: const Text('导入 .catodo 完整格式'),
+              subtitle: const Text('从 Catodo 完整备份文件导入'),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                color: Color(0xFFBDBDBD),
+              ),
+              onTap: () => DataIoActions.importCatodo(context, ref),
+            ),
           ),
-          _DataActionCard(
-            icon: Icons.inventory_2_rounded,
-            iconColor: Colors.indigo,
-            iconBgColor: const Color(0xFFE8EAF6),
-            title: '导入 .catodo 完整格式',
-            subtitle: '从完整备份文件导入',
-            onTap: () => DataIoActions.importCatodo(context, ref),
+          const SizedBox(height: 16),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text(
+              '导出',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black54,
+              ),
+            ),
           ),
-          const _SectionTitle(title: '导出', icon: Icons.file_upload_rounded),
-          _DataActionCard(
-            icon: Icons.calendar_month_rounded,
-            iconColor: Colors.green,
-            iconBgColor: const Color(0xFFE8F5E9),
-            title: '导出 .ics 文件',
-            subtitle: '保存所有任务到所选文件夹',
-            onTap: () => DataIoActions.exportIcs(context, ref),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ListTile(
+              leading: Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                ),
+                child: const Icon(Icons.file_upload, color: Colors.green),
+              ),
+              title: const Text('导出 .ics 文件'),
+              subtitle: const Text('保存所有任务到所选文件夹'),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                color: Color(0xFFBDBDBD),
+              ),
+              onTap: () => DataIoActions.exportIcs(context, ref),
+            ),
           ),
-          _DataActionCard(
-            icon: Icons.archive_rounded,
-            iconColor: Colors.teal,
-            iconBgColor: const Color(0xFFE0F2F1),
-            title: '导出 .catodo 完整格式',
-            subtitle: '导出所有任务和设置',
-            onTap: () => _showExportCatodoDialog(context, ref),
+          const SizedBox(height: 8),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ListTile(
+              leading: Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                ),
+                child: const Icon(Icons.file_upload, color: Colors.green),
+              ),
+              title: const Text('导出 .catodo 完整格式'),
+              subtitle: const Text('导出所有任务和设置'),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                color: Color(0xFFBDBDBD),
+              ),
+              onTap: () => _showExportCatodoDialog(context, ref),
+            ),
           ),
         ],
       ),
