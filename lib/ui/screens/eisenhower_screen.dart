@@ -40,15 +40,13 @@ class EisenhowerScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(6),
                 child: Column(children: [
                 Expanded(child: Row(children: [
-                  Expanded(child: _quadrant(context, '🔥 立即处理', '重要·紧急', urgentImportant, const Color(0xFFFFE0DB))),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: _quadrant(context, '🎯 提前规划', '重要·不紧急', notUrgentImportant, const Color(0xFFEDE7FE))),
+                  Expanded(child: _quadrant(context, '重要·紧急', '重要·紧急', urgentImportant, const Color(0xFFFFE0DB))),
+                  Expanded(child: _quadrant(context, '重要·不紧急', '重要·不紧急', notUrgentImportant, const Color(0xFFEDE7FE))),
                 ])),
                 const Divider(height: 1),
                 Expanded(child: Row(children: [
-                  Expanded(child: _quadrant(context, '⚡ 委派他人', '紧急·不重要', urgentNotImportant, const Color(0xFFFFF2CC))),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: _quadrant(context, '🌿 暂时搁置', '不重要·不紧急', notUrgentNotImportant, const Color(0xFFF5F5F5))),
+                  Expanded(child: _quadrant(context, '紧急·不重要', '紧急·不重要', urgentNotImportant, const Color(0xFFFFF2CC))),
+                  Expanded(child: _quadrant(context, '不重要·不紧急', '不重要·不紧急', notUrgentNotImportant, const Color(0xFFF5F5F5))),
                 ])),
               ]),
             ),
@@ -88,7 +86,7 @@ class EisenhowerScreen extends ConsumerWidget {
                   itemBuilder: (_, i) {
                     final t = tasks[i];
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.only(bottom: 6),
                       child: InkWell(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TaskFormScreen(task: t))),
                         borderRadius: BorderRadius.circular(10),
