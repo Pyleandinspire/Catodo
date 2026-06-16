@@ -72,7 +72,7 @@ dependencies:
   cryptography: ^2.7.0
 
   # File Picker (for .ics import)
-  file_picker: ^8.0.3
+  file_picker: ^10.0.0
 
   # Share (for .ics export)
   share_plus: ^12.0.0

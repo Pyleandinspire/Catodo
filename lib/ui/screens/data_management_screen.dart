@@ -119,9 +119,9 @@ class DataIoActions {
       }
 
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('成功导入 ${data.tasks.length} 个任务')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('成功导入 ${data.tasks.length} 个任务')),
+        );
       }
     } on FormatException catch (e) {
       if (context.mounted) {
