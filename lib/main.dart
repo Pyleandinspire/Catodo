@@ -11,6 +11,7 @@ import 'ui/screens/eisenhower_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/components/adaptive_navigation.dart';
+import 'ui/theme/app_theme.dart';
 import 'services/notification_service.dart';
 import 'services/secrets_migration.dart';
 import 'providers/isar_provider.dart';
@@ -134,7 +135,9 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Catodo',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+      theme: AppTheme.buildLight(),
+      darkTheme: AppTheme.buildDark(),
+      themeMode: ThemeMode.system,
       home: Consumer(
         builder: (context, ref, child) {
           final isarAsync = ref.watch(isarProvider);

@@ -12,6 +12,7 @@ import '../../models/chat_message_entity.dart';
 import '../../models/task.dart';
 import 'ai_settings_screen.dart';
 import 'scheduling_optimizer_screen.dart';
+import '../icons/app_icons.dart';
 
 /// 聊天页 — 已迁到 Isar 持久化（PLAN-AI-001-5）。
 ///
@@ -488,7 +489,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.send, color: Colors.white),
+                  : const Icon(AppIcons.send, color: Colors.white),
             ),
           ),
         ],
@@ -524,8 +525,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     child: CircularProgressIndicator(strokeWidth: 1.5),
                   ),
                   SizedBox(width: 8),
-                  Text(
-                    '思考中...',
+                  const Text(
+                    '猫猫在想...',
                     style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
                   ),
                 ],
@@ -542,12 +543,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     required String text,
     bool isSystem = false,
   }) {
+    final scheme = Theme.of(context).colorScheme;
+    Color aiBg;
+    try { aiBg = scheme.surfaceContainerHigh; } catch (_) { aiBg = const Color(0xFFF5F5F5); }
     final bg = isUser
-        ? Colors.black
+        ? scheme.primary
         : isSystem
-            ? const Color(0xFFEEF6EE)
-            : const Color(0xFFF5F5F5);
-    final fg = isUser ? Colors.white : Colors.black87;
+            ? const Color(0xFFE8F5E9)
+            : aiBg;
+    final fg = isUser ? scheme.onPrimary : (isSystem ? const Color(0xFF2E7D32) : scheme.onSurface);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
