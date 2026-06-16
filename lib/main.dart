@@ -12,6 +12,8 @@ import 'ui/screens/chat_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/components/adaptive_navigation.dart';
 import 'providers/theme_provider.dart';
+import 'providers/chat_provider.dart';
+import 'providers/webdav_provider.dart';
 import 'ui/theme/app_theme.dart';
 import 'services/notification_service.dart';
 import 'services/secrets_migration.dart';
@@ -86,8 +88,6 @@ class CatodoApp extends ConsumerStatefulWidget {
 }
 
 class _CatodoAppState extends ConsumerState<CatodoApp> {
-  int _selectedIndex = 0;
-
   static const List<Widget> _screens = [
     TaskListScreen(),
     EisenhowerScreen(),
@@ -96,9 +96,7 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
   ];
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    ref.read(selectedTabProvider.notifier).state = index;
   }
 
   void _rescheduleReminders(Isar isar) async {
@@ -121,6 +119,10 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
     ref.listenManual(isarProvider, (prev, next) {
       next.whenData((isar) => _rescheduleReminders(isar));
     });
+    // 预加载 AI 配置（不阻塞 UI）
+    ref.read(aiServiceProvider.future).catchError((_) => null);
+    // 触发 WebDAV 配置的异步加载（_loadConfig 在构造时调用）
+    ref.read(webdavConfigProvider);
   }
 
   @override
@@ -137,7 +139,7 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
           return isarAsync.when(
             data: (isar) {
               return AdaptiveNavigation(
-                selectedIndex: _selectedIndex,
+                selectedIndex: ref.watch(selectedTabProvider),
                 onDestinationSelected: _onItemTapped,
                 children: _screens,
               );

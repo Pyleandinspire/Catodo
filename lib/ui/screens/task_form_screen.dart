@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:photo_view/photo_view.dart';
 import '../../models/task.dart';
 import '../../data/task_dao.dart';
 import '../../providers/isar_provider.dart';
@@ -177,6 +180,76 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     } finally {
       if (mounted) setState(() => _isAiParsing = false);
     }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final path = result.files.single.path;
+      if (path == null) return;
+      final current = _descriptionController.text;
+      final insert = current.isEmpty ? path : '$current\n$path';
+      _descriptionController.text = insert;
+      _descriptionController.selection = TextSelection.collapsed(offset: insert.length);
+    } catch (e) {
+      debugPrint('_pickImage failed: $e');
+    }
+  }
+
+  List<String> _extractImagePaths() {
+    final text = _descriptionController.text;
+    if (text.isEmpty) return const [];
+    final regex = RegExp(r'(?:^|\n)(\/[^\n]+\.(?:png|jpg|jpeg|gif|webp|bmp))', multiLine: true);
+    return regex.allMatches(text).map((m) => m.group(1)!).toList();
+  }
+
+  Widget _buildImagePreviews() {
+    final paths = _extractImagePaths();
+    if (paths.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: paths.map((p) => GestureDetector(
+          onTap: () => _openImageFullscreen(p),
+          child: Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.withAlpha(60)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Image.file(File(p), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 32, color: Colors.grey)),
+          ),
+        )).toList(),
+      ),
+    );
+  }
+
+  void _openImageFullscreen(String path) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
+          backgroundColor: Colors.black,
+          body: PhotoView(
+            imageProvider: FileImage(File(path)),
+            minScale: PhotoViewComputedScale.contained,
+            maxScale: PhotoViewComputedScale.covered * 3,
+            backgroundDecoration: const BoxDecoration(color: Colors.black),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -377,9 +450,16 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.image_outlined),
+                    tooltip: '插入图片',
+                    onPressed: _pickImage,
+                  ),
                 ),
                 maxLines: 3,
               ),
+              // 图片预览
+              _buildImagePreviews(),
 
               const SizedBox(height: 16),
 

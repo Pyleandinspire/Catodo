@@ -208,11 +208,45 @@ class AIService {
   }
 
   /// 详细版：返回 (data, error)；data 与 error 至多一个非空。
+  ///
+  /// JSON 解析失败时**自动重试 1 次**，追加更强 JSON 提示到 user prompt。
+  /// 重试仍失败才返回 [AiErrorType.parseFailed]。
   Future<AiStructuredResult> requestStructuredOutputDetailed({
     required String systemPrompt,
     required String userPrompt,
     List<ChatTurn> history = const [],
   }) async {
+    // 第一次尝试
+    var result = await _requestRaw(systemPrompt, userPrompt, history);
+    if (result.data != null) return result;
+    if (result.error?.type != AiErrorType.parseFailed) return result;
+
+    // JSON 解析失败 → 追加提示重试 1 次
+    debugPrint('AI JSON 解析失败，自动重试（1/1）...');
+    final retryPrompt =
+        '$userPrompt\n\n【重要】上一次你的回复不是纯 JSON 格式，无法解析。这次请务必只输出纯 JSON，不要任何解释或 markdown 标记。';
+    result = await _requestRaw(systemPrompt, retryPrompt, history);
+    if (result.data != null) return result;
+    // 重试仍失败 → 标注已重试
+    if (result.error?.type == AiErrorType.parseFailed) {
+      return (
+        data: null,
+        error: AiCallError(
+          type: AiErrorType.parseFailed,
+          message: 'AI 返回了非 JSON 格式（已自动重试 1 次）',
+          detail: result.error!.detail,
+        ),
+      );
+    }
+    return result;
+  }
+
+  /// 单次原始请求，不做重试。
+  Future<AiStructuredResult> _requestRaw(
+    String systemPrompt,
+    String userPrompt,
+    List<ChatTurn> history,
+  ) async {
     try {
       final messages = <Map<String, dynamic>>[
         {

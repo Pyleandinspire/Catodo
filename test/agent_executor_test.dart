@@ -92,7 +92,7 @@ void main() {
   group('executeAction 分发表覆盖', () {
     test('未实现的 action 永远不会发生（switch exhaustive）', () {
       // 仅在编译期保证；这里跑一遍 createTask / addTag 确保连通
-      expect(AgentActionType.values.length, 15);
+      expect(AgentActionType.values.length, 17);
     });
   });
 
@@ -539,6 +539,50 @@ void main() {
       );
       final after = await repo.getTaskById(t.id);
       expect(after!.priority, 3);
+    });
+  });
+
+  // ============== query_tasks / bulk_update ==============
+
+  group('query_tasks / bulk_update', () {
+    test('bulk_update 批量改优先级 + groupName', () async {
+      final t1 = addTask(title: 'A', priority: 1);
+      final t2 = addTask(title: 'B', priority: 1);
+      final r = await executeAction(
+        AgentAction(type: AgentActionType.bulkUpdate, params: {
+          'taskIds': [t1.id, t2.id],
+          'priority': 3,
+          'groupName': '工作',
+        }),
+        repo,
+      );
+      expect(r.success, true);
+      expect((await repo.getTaskById(t1.id))!.priority, 3);
+      expect((await repo.getTaskById(t1.id))!.groupName, '工作');
+      expect((await repo.getTaskById(t2.id))!.priority, 3);
+    });
+
+    test('bulk_update 空 taskIds 失败', () async {
+      final r = await executeAction(
+        AgentAction(type: AgentActionType.bulkUpdate, params: {
+          'taskIds': [],
+        }),
+        repo,
+      );
+      expect(r.success, false);
+    });
+
+    test('bulk_update needsConfirmation=true', () {
+      final a = AgentAction(type: AgentActionType.bulkUpdate, params: const {});
+      expect(a.needsConfirmation, true);
+    });
+
+    test('query_tasks description 显示 keyword', () {
+      final a = AgentAction(
+        type: AgentActionType.queryTasks,
+        params: const {'keyword': '报告'},
+      );
+      expect(a.description, contains('报告'));
     });
   });
 

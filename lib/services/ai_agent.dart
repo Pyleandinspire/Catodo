@@ -21,7 +21,9 @@ enum AgentActionType {
   removeReminder('remove_reminder'),
   clearReminders('clear_reminders'),
   setRepeat('set_repeat'),
-  clearRepeat('clear_repeat');
+  clearRepeat('clear_repeat'),
+  queryTasks('query_tasks'),
+  bulkUpdate('bulk_update');
 
   final String value;
   const AgentActionType(this.value);
@@ -79,6 +81,7 @@ class AgentAction {
       case AgentActionType.clearReminders:
       case AgentActionType.setRepeat:
       case AgentActionType.clearRepeat:
+      case AgentActionType.bulkUpdate:
         return true;
       default:
         return false;
@@ -131,6 +134,15 @@ class AgentAction {
         return '设置任务 [${params['taskId']}] 为每 $iv $ty 重复';
       case AgentActionType.clearRepeat:
         return '取消任务 [${params['taskId']}] 的重复';
+      case AgentActionType.queryTasks:
+        final k = params['keyword'];
+        var s = '搜索任务';
+        if (k is String && k.isNotEmpty) s += '「$k」';
+        return s;
+      case AgentActionType.bulkUpdate:
+        final ids = params['taskIds'];
+        final n = ids is List ? ids.length : '?';
+        return '批量更新 $n 个任务';
     }
   }
 }
@@ -383,6 +395,12 @@ Future<ActionResult> executeAction(AgentAction action, TaskRepository dao) async
 
       case AgentActionType.clearRepeat:
         return await _executeClearRepeat(action, dao);
+
+      case AgentActionType.queryTasks:
+        return await _executeQueryTasks(action, dao);
+
+      case AgentActionType.bulkUpdate:
+        return await _executeBulkUpdate(action, dao);
     }
   } catch (e) {
     return ActionResult(success: false, message: '执行失败: $e');
@@ -843,6 +861,73 @@ Future<ActionResult> _executeClearRepeat(
   );
 }
 
+Future<ActionResult> _executeQueryTasks(
+  AgentAction action,
+  TaskRepository dao,
+) async {
+  // queryTasks 只在 ChatScreen 端通过 DAO 的全部方法才能完整实现。
+  // 这里返回一个"需在 UI 端补全"的信号，ChatScreen 会拦截 ActionResult.data
+  // 为 List<Task> 类型并存入 _lastQueryResults。
+  // 如果没有 Isar，只能用 Repository 有限的 getTaskById，无法做模糊/多条件查询。
+  // 所以这里返回失败，让 ChatScreen 用 TaskDao 完整查。
+  return const ActionResult(
+    success: false,
+    message: 'query_tasks 需要在 UI 端用完整 DAO 查询',
+    data: null,
+  );
+}
+
+Future<ActionResult> _executeBulkUpdate(
+  AgentAction action,
+  TaskRepository dao,
+) async {
+  final rawIds = action.params['taskIds'];
+  if (rawIds is! List || rawIds.isEmpty) {
+    return const ActionResult(success: false, message: 'taskIds 必填且不能为空');
+  }
+  final taskIds = <int>[];
+  for (final v in rawIds) {
+    final id = _parseTaskId(v);
+    if (id != null) taskIds.add(id);
+  }
+  if (taskIds.isEmpty) {
+    return const ActionResult(success: false, message: '无效的 taskIds');
+  }
+
+  int updated = 0;
+  for (final id in taskIds) {
+    final existing = await dao.getTaskById(id);
+    if (existing == null) continue;
+    // 如果传了字段则改，不传不变
+    if (action.params.containsKey('priority')) {
+      existing.priority = _parsePriority(action.params['priority']);
+    }
+    if (action.params.containsKey('dueDate')) {
+      existing.dueDate = _parseDate(action.params['dueDate']);
+    }
+    if (action.params.containsKey('groupName')) {
+      final g = action.params['groupName'];
+      existing.groupName = g is String ? g : null;
+    }
+    if (action.params.containsKey('tags')) {
+      existing.tags = _parseStringList(action.params['tags']);
+    }
+    if (action.params.containsKey('isCompleted')) {
+      final c = action.params['isCompleted'];
+      if (c is bool) existing.isCompleted = c;
+    }
+    existing.updatedAt = DateTime.now();
+    await dao.updateTask(existing);
+    updated++;
+  }
+
+  return ActionResult(
+    success: true,
+    message: '已批量更新 $updated 个任务',
+    data: updated,
+  );
+}
+
 // ==================== 辅助方法 ====================
 
 int _parsePriority(dynamic value) {
@@ -962,6 +1047,11 @@ const String kAgentSystemPrompt = '''
                                    或 repeat?({type:"daily|weekly|monthly", interval:>=1})
 14) clear_repeat           params: taskId
 
+15) query_tasks            params: keyword?, tag?, groupName?, priority?, isCompleted?, limit?(默认20)
+                           返回匹配的任务 id 列表注入到下一轮上下文中。
+16) bulk_update            params: taskIds(int[]), priority?, dueDate?, tags?, groupName?, isCompleted?
+                           批量更新多条任务；仅传需要改的字段。需确认。
+
 【重复规则】
 - 优先使用 rrule 字符串（RFC 5545）；
 - 也可使用简词 {type, interval} 由代码转 rrule；
@@ -983,6 +1073,7 @@ const String kAgentSystemPrompt = '''
    - 传具体值 → 改为该值；
    - 传 null → 显式清空（仅 description / dueDate / groupName / rrule 支持 null 清空）。
    不要为了"保持不变"而把字段重复传一遍，会浪费 tokens。
+	8. **禁止重复操作**：上下文中出现的「已执行」「已创建」「已删除」等执行记录表示那些操作已经完成，绝对不要再重复执行。只响应用户本轮最新说的话。
 
 【示例】
 用户："明天上午 9 点提醒我吃药"

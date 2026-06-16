@@ -20,7 +20,8 @@ import '../icons/app_icons.dart';
 /// - AIService 来自 [aiServiceProvider]，避免旧的 fire-and-forget 加载竞态；
 /// - 待确认 actions 仍在内存（[_pending]），重启即过期，避免 taskId 失效误执行。
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key});
+  final String? initialMessage;
+  const ChatScreen({super.key, this.initialMessage});
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -42,7 +43,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   bool _isSending = false;
 
-  static const String _welcomeText =
+  /// 上次 query_tasks 的结果，下一轮注入上下文
+  List<Task>? _lastQueryResults;
+
+  /// 上一轮执行的操作摘要，下一轮追加到 user prompt（方案 B）
+  String? _pendingContextNote;
+
+  static const String _welcomeBase =
       '你好！我是 AI 助手，可以直接帮你管理任务：\n'
       '1. 创建任务 - "帮我创建一个高优先级任务：完成报告"\n'
       '2. 分解任务 - "分解任务「学习 Flutter」"\n'
@@ -51,7 +58,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       '5. 完成/删除 - "完成任务「买牛奶」"\n'
       '6. 自由对话 - 直接输入你的问题';
 
+  String _buildWelcome() {
+    final tasks = ref.read(activeTasksProvider).valueOrNull ?? const [];
+    final active = tasks.where((t) => !t.isCompleted).length;
+    final completed = tasks.length - active;
+    final now = DateTime.now();
+    final todayEnd = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final todayCount = tasks.where((t) => !t.isCompleted && t.dueDate != null && t.dueDate!.isBefore(todayEnd)).length;
+    if (active == 0 && completed == 0) return _welcomeBase;
+    final buf = StringBuffer('你好！');
+    if (active > 0) buf.write(' 你今天有 $active 个任务');
+    if (todayCount > 0) buf.write('，其中 $todayCount 个今天截止');
+    if (completed > 0) buf.write('。已完成 $completed 个');
+    buf.writeln('。\n\n我可以帮你创建、分解、调整优先级、加标签等，直接跟我说就好。');
+    return buf.toString();
+  }
+
   static const String _pendingHint = '未确认的操作仅在本次会话有效，关闭或切走即过期。';
+
+  @override
+  void initState() {
+    super.initState();
+    // 从外部带入的消息（如逾期 ❤️），等首帧渲染后自动发送
+    // 监听外部传入的消息（逾期按钮等），切 Tab 过来也能触发
+    ref.listenManual(chatInitialMessageProvider, (prev, next) {
+      if (next != null && next.isNotEmpty) {
+        ref.read(chatInitialMessageProvider.notifier).state = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _sendMessage(overrideText: next);
+        });
+      }
+    });
+  }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -106,16 +144,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await _appendDb(role: 'user', content: text);
     _scrollToBottom();
 
-    // 取 AIService（FutureProvider，已配置时会立刻同步取到值）
-    final aiAsync = ref.read(aiServiceProvider);
-    final ai = aiAsync.valueOrNull;
+    // 等待 AI Service 就绪：Provider 可能在启动后首次加载（读 SecureStore/SP）
+    final ai = await ref.read(aiServiceProvider.future)
+        .timeout(const Duration(seconds: 3), onTimeout: () => null);
     if (ai == null) {
-      // 加载中或未配置：以 UI 提示告知，不入模型上下文
+      // 超时 3s 或真的未配置 → 提示用户
       await _appendDb(
         role: 'assistant',
-        content: aiAsync.isLoading
-            ? '正在加载 AI 配置，请稍候再发送…'
-            : '请先在设置中配置 AI 助手的 API 参数。',
+        content: '请先在设置中配置 AI 助手的 API 参数。',
         visibleToModel: false,
       );
       if (mounted) setState(() => _isSending = false);
@@ -126,7 +162,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       // 任务上下文
       final tasks = ref.read(activeTasksProvider).valueOrNull ?? const [];
-      final context = buildTaskContext(tasks);
+      var context = buildTaskContext(tasks);
+
+      // 追加上次 query_tasks 结果
+      final lastQuery = _lastQueryResults;
+      if (lastQuery != null && lastQuery.isNotEmpty) {
+        context += '\n【上次查询结果（共 ${lastQuery.length} 条，可用 taskId 操作）】\n';
+        for (final t in lastQuery.take(20)) {
+          context += '- [id:${t.id}] ${t.title} | 优先级:${t.priority}${t.groupName != null ? ' | 分组:${t.groupName}' : ''}\n';
+        }
+        _lastQueryResults = null; // 只注入一次
+      }
 
       // 多轮历史从持久化派生（不含本轮 user，因为 ChatTurn 由 latestUserMessage 单独传）
       final messagesNow = ref.read(chatMessagesProvider).valueOrNull ?? const [];
@@ -135,9 +181,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           : const <ChatMessageEntity>[];
       final history = messagesToTurns(priorMessages);
 
+      // 方案 E：加隐式指令防重复 + 方案 B：追加上轮执行摘要
+      final note = _pendingContextNote;
+      _pendingContextNote = null;
+      final effectivePrompt = StringBuffer('（只处理本条消息，不要重复上下文中的操作。）');
+      if (note != null && note!.isNotEmpty) effectivePrompt.write('\n$note');
+      effectivePrompt.write('\n$text');
+
       final r = await ai.requestAgentActionDetailedWithHistory(
         history: history,
-        latestUserMessage: text,
+        latestUserMessage: effectivePrompt.toString(),
         context: context,
       );
 
@@ -154,14 +207,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       final response = r.response;
 
-      // 拆分自动 / 待确认
+      // 拆分 query / 自动 / 待确认
+      final queryActions = <AgentAction>[];
       final autoActions = <AgentAction>[];
       final confirmActions = <AgentAction>[];
       for (final a in response.actions) {
-        if (a.needsConfirmation) {
+        if (a.type == AgentActionType.queryTasks) {
+          queryActions.add(a);
+        } else if (a.needsConfirmation) {
           confirmActions.add(a);
         } else {
           autoActions.add(a);
+        }
+      }
+
+      // queryTasks：用完整 DAO 查询 → 存入 _lastQueryResults 给下一轮上下文
+      if (queryActions.isNotEmpty) {
+        final isar = ref.read(isarProvider).valueOrNull;
+        if (isar != null) {
+          final dao = TaskDao(isar);
+          final allTasks = await dao.getAllActiveTasks();
+          var results = allTasks;
+          for (final q in queryActions) {
+            results = _applyQueryFilter(results, q.params);
+          }
+          if (mounted) setState(() => _lastQueryResults = results);
         }
       }
 
@@ -196,6 +266,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         replyBuffer.write(
           '\n\n（已忽略未知动作：${response.warnings.join(', ')}）',
         );
+      }
+      // 追加 query_tasks 结果到回复
+      final qr = _lastQueryResults;
+      if (qr != null && qr.isNotEmpty) {
+        replyBuffer.write('\n\n找到 ${qr.length} 个匹配任务：');
+        for (final t in qr.take(10)) {
+          replyBuffer.write('\n- [id:${t.id}] ${t.title}');
+        }
+        if (qr.length > 10) replyBuffer.write('\n…还有 ${qr.length - 10} 个');
       }
       final assistantText = replyBuffer.toString();
       await _appendDb(
@@ -249,11 +328,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await NotificationService().rescheduleAllReminders(touched);
     }
 
-    final buf = StringBuffer('已执行操作：\n');
+    // 执行摘要入历史（一行简短格式，避免 LLM 被长执行日志干扰后重复执行）
+    final parts = <String>[];
     for (final r in results) {
-      buf.writeln(r.success ? '✓ ${r.message}' : '✗ ${r.message}');
+      parts.add(r.message.replaceAll('\n', ' '));
     }
-    await _appendDb(role: 'system_summary', content: buf.toString());
+    final summary = parts.join('；');
+    await _appendDb(
+      role: 'system_summary',
+      content: summary,
+      visibleToModel: false, // 方案 G：执行摘要不让 LLM 看到，防止重复执行
+    );
+
+    // 方案 B：下一轮 user prompt 追加执行摘要
+    _pendingContextNote = '（上轮已完成：$summary）';
 
     setState(() => _pending.remove(actions));
     _scrollToBottom();
@@ -394,7 +482,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final histLen = isEmpty ? 1 : shown.length;
         if (index < histLen) {
           if (isEmpty) {
-            return _buildBubble(isUser: false, text: _welcomeText);
+            return _buildBubble(isUser: false, text: _buildWelcome());
           }
           final m = shown[index];
           return _buildBubble(
@@ -840,6 +928,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ]),
       ),
     );
+  }
+
+  /// 在内存中用 query params 过滤任务列表
+  List<Task> _applyQueryFilter(List<Task> tasks, Map<String, dynamic> params) {
+    var results = tasks;
+    if (params['keyword'] is String && (params['keyword'] as String).isNotEmpty) {
+      final k = (params['keyword'] as String).toLowerCase();
+      results = results.where((t) => t.title.toLowerCase().contains(k)).toList();
+    }
+    final tag = params['tag'];
+    if (tag is String && tag.isNotEmpty) {
+      results = results.where((t) => t.tags.any((x) => x == tag)).toList();
+    }
+    final group = params['groupName'];
+    if (group is String && group.isNotEmpty && group != 'null') {
+      results = results.where((t) => t.groupName == group).toList();
+    }
+    if (params['priority'] != null) {
+      final p = params['priority'] is int ? params['priority'] as int : int.tryParse(params['priority'].toString());
+      if (p != null) results = results.where((t) => t.priority == p).toList();
+    }
+    final completed = params['isCompleted'];
+    if (completed is bool) {
+      results = results.where((t) => t.isCompleted == completed).toList();
+    }
+    final limit = params['limit'];
+    if (limit is int && limit > 0 && results.length > limit) {
+      results = results.sublist(0, limit);
+    } else if (results.length > 20) {
+      results = results.sublist(0, 20); // 默认截断
+    }
+    return results;
   }
 
   void _showTaskPicker(String actionType) {
