@@ -10,6 +10,44 @@ import '../../providers/webdav_provider.dart';
 import '../../data/task_dao.dart';
 import '../../providers/isar_provider.dart';
 
+class _HeaderActionButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final Widget? child;
+
+  const _HeaderActionButton({
+    required this.icon,
+    required this.tooltip,
+    this.onPressed,
+    this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Center(
+            child: child ?? Icon(icon, size: 21, color: colorScheme.primary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class TaskListScreen extends ConsumerWidget {
   const TaskListScreen({super.key});
 
@@ -18,6 +56,7 @@ class TaskListScreen extends ConsumerWidget {
     final tasks = ref.watch(filteredTasksProvider);
     final completedCount = tasks.where((t) => t.isCompleted).length;
     final pendingCount = tasks.length - completedCount;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       body: SafeArea(
@@ -25,90 +64,83 @@ class TaskListScreen extends ConsumerWidget {
           children: [
             // 头部区域
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // 标题
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Catodo',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          Text(
-                            '$pendingCount/$completedCount',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorScheme.shadow.withValues(alpha: 0.06),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '喵待办',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.onSurface,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '待办 $pendingCount 项 · 已完成 $completedCount 项',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _HeaderActionButton(
+                          icon: Icons.calendar_today_rounded,
+                          tooltip: '按天视图',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const DayViewScreen(),
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  // 右上角按钮组
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const DayViewScreen(),
+                        ),
+                        _HeaderActionButton(
+                          icon: Icons.add_rounded,
+                          tooltip: '添加任务',
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const TaskFormScreen(),
+                            ),
                           ),
                         ),
-                        icon: const Icon(
-                          Icons.calendar_today,
-                          color: Colors.black,
+                        _HeaderActionButton(
+                          icon: Icons.filter_list_rounded,
+                          tooltip: '筛选',
+                          onPressed: () => _showFilterDialog(context, ref),
                         ),
-                        tooltip: '按天视图',
+                        _buildSyncButton(context, ref),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: tasks.isNotEmpty ? completedCount / tasks.length : 0,
+                        backgroundColor: colorScheme.surfaceContainerHighest,
+                        color: colorScheme.primary,
+                        minHeight: 8,
                       ),
-                      IconButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const TaskFormScreen(),
-                          ),
-                        ),
-                        icon: const Icon(Icons.add, color: Colors.black),
-                        tooltip: '添加任务',
-                      ),
-                      IconButton(
-                        onPressed: () => _showFilterDialog(context, ref),
-                        icon: const Icon(
-                          Icons.filter_list,
-                          color: Colors.black,
-                        ),
-                        tooltip: '筛选',
-                      ),
-                      _buildSyncButton(context, ref),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-
-            // 进度条
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: tasks.isNotEmpty
-                  ? LinearProgressIndicator(
-                      value: tasks.length > 0
-                          ? completedCount / tasks.length
-                          : 0,
-                      backgroundColor: Colors.grey[200],
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(8),
-                      minHeight: 4,
-                    )
-                  : const SizedBox(height: 4),
             ),
 
             const SizedBox(height: 8),
@@ -119,33 +151,32 @@ class TaskListScreen extends ConsumerWidget {
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
+                        children: [
                           Icon(
-                            Icons.check_circle_outline,
-                            size: 64,
-                            color: Color(0xFFE0E0E0),
+                            Icons.task_alt_rounded,
+                            size: 70,
+                            color: colorScheme.primary.withValues(alpha: 0.22),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 18),
                           Text(
-                            '暂无任务',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Color(0xFF9E9E9E),
-                            ),
+                            '还没有任务',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                ),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(
-                            '点击下方按钮添加新任务',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFFBDBDBD),
-                            ),
+                            '点击添加按钮，记录下一件想完成的事',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                           ),
                         ],
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
                       itemCount: tasks.length,
                       itemBuilder: (context, index) {
                         final task = tasks[index];
@@ -252,14 +283,22 @@ class TaskListScreen extends ConsumerWidget {
   Widget _buildSyncButton(BuildContext context, WidgetRef ref) {
     final syncStatus = ref.watch(syncStatusProvider);
 
-    return IconButton(
+    return _HeaderActionButton(
+      icon: Icons.sync_rounded,
+      tooltip: syncStatus == SyncStatus.syncing ? '同步中...' : '同步',
       onPressed: syncStatus == SyncStatus.syncing
           ? null
           : () => _performSync(context, ref),
-      icon: syncStatus == SyncStatus.syncing
-          ? const CircularProgressIndicator(strokeWidth: 2, color: Colors.black)
-          : const Icon(Icons.sync, color: Colors.black),
-      tooltip: syncStatus == SyncStatus.syncing ? '同步中...' : '同步',
+      child: syncStatus == SyncStatus.syncing
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            )
+          : null,
     );
   }
 

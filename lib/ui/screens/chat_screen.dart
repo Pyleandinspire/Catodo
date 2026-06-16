@@ -337,44 +337,68 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildHeader(List<ChatMessageEntity> msgs) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'AI 助手',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withValues(alpha: 0.05),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(16),
               ),
-              Row(
+              child: Icon(Icons.auto_awesome_rounded, color: colorScheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  IconButton(
-                    tooltip: '清空对话',
-                    onPressed: _isSending ? null : _confirmClearConversation,
-                    icon: const Icon(Icons.delete_sweep_outlined, size: 20),
-                    color: Colors.black54,
+                  Text(
+                    'AI 助手',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                        ),
                   ),
-                  TextButton.icon(
-                    onPressed: _showQuickActions,
-                    icon: const Icon(Icons.auto_awesome, size: 18),
-                    label: const Text('快捷操作'),
+                  Text(
+                    '智能任务管理 Agent',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                   ),
                 ],
               ),
-            ],
-          ),
-          const Text(
-            '智能任务管理 Agent',
-            style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
-          ),
-        ],
+            ),
+            IconButton.filledTonal(
+              tooltip: '清空对话',
+              onPressed: _isSending ? null : _confirmClearConversation,
+              icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: _showQuickActions,
+              icon: const Icon(Icons.bolt_rounded, size: 18),
+              label: const Text('快捷操作'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -448,47 +472,47 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildComposer() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, -6),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(24),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: _messageController,
-                onSubmitted: (_) => _sendMessage(),
-                decoration: const InputDecoration(
-                  hintText: '输入消息...',
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
-                ),
+            child: TextField(
+              controller: _messageController,
+              onSubmitted: (_) => _sendMessage(),
+              decoration: const InputDecoration(
+                hintText: '输入消息...',
+                prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
               ),
             ),
           ),
           const SizedBox(width: 12),
-          GestureDetector(
-            onTap: _isSending ? null : _sendMessage,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _isSending ? Colors.grey : Colors.black,
-                borderRadius: const BorderRadius.all(Radius.circular(24)),
+          IconButton.filled(
+            onPressed: _isSending ? null : _sendMessage,
+            icon: _isSending
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send_rounded),
+            style: IconButton.styleFrom(
+              fixedSize: const Size(52, 52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
               ),
-              child: _isSending
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.send, color: Colors.white),
             ),
           ),
         ],
@@ -542,12 +566,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     required String text,
     bool isSystem = false,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     final bg = isUser
-        ? Colors.black
+        ? colorScheme.primary
         : isSystem
             ? const Color(0xFFEEF6EE)
-            : const Color(0xFFF5F5F5);
-    final fg = isUser ? Colors.white : Colors.black87;
+            : colorScheme.surface;
+    final fg = isUser ? colorScheme.onPrimary : colorScheme.onSurface;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -560,17 +585,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(isUser ? 16 : 0),
-              bottomRight: Radius.circular(isUser ? 0 : 16),
+              topLeft: const Radius.circular(18),
+              topRight: const Radius.circular(18),
+              bottomLeft: Radius.circular(isUser ? 18 : 4),
+              bottomRight: Radius.circular(isUser ? 4 : 18),
             ),
+            border: isUser
+                ? null
+                : Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.65),
+                  ),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(13),
             child: Text(
               text,
-              style: TextStyle(color: fg, fontSize: 14),
+              style: TextStyle(color: fg, fontSize: 14, height: 1.35),
             ),
           ),
         ),

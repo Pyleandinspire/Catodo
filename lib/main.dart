@@ -3,6 +3,7 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:window_manager/window_manager.dart';
@@ -62,7 +63,7 @@ void main() {
         .ensureInitialized()
         .then((_) async {
           await windowManager.setMinimumSize(const Size(400, 600));
-          await windowManager.setTitle('Catodo');
+          await windowManager.setTitle('喵待办');
         })
         .catchError((_) {
           // 桌面窗口配置失败不影响运行
@@ -91,6 +92,95 @@ Future<void> _initializeServices() async {
   } catch (_) {
     // 通知服务初始化失败不影响应用运行
   }
+}
+
+ThemeData _buildAppTheme() {
+  const seedColor = Color(0xFF5B6CFF);
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: seedColor,
+    brightness: Brightness.light,
+  );
+
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: const Color(0xFFF7F8FC),
+    appBarTheme: AppBarTheme(
+      elevation: 0,
+      centerTitle: false,
+      backgroundColor: colorScheme.surface,
+      foregroundColor: colorScheme.onSurface,
+      surfaceTintColor: Colors.transparent,
+    ),
+    cardTheme: CardThemeData(
+      elevation: 1,
+      color: colorScheme.surface,
+      surfaceTintColor: Colors.transparent,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: colorScheme.surface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: colorScheme.primary, width: 1.4),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      height: 68,
+      backgroundColor: colorScheme.surface,
+      indicatorColor: colorScheme.primaryContainer,
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 12,
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w700
+              : FontWeight.w500,
+          color: states.contains(WidgetState.selected)
+              ? colorScheme.primary
+              : colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ),
+    navigationRailTheme: NavigationRailThemeData(
+      backgroundColor: colorScheme.surface,
+      selectedIconTheme: IconThemeData(color: colorScheme.primary),
+      selectedLabelTextStyle: TextStyle(
+        color: colorScheme.primary,
+        fontWeight: FontWeight.w700,
+      ),
+      unselectedIconTheme: IconThemeData(color: colorScheme.onSurfaceVariant),
+      unselectedLabelTextStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+      indicatorColor: colorScheme.primaryContainer,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        side: BorderSide(color: colorScheme.outlineVariant),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: colorScheme.primary,
+      foregroundColor: colorScheme.onPrimary,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    ),
+  );
 }
 
 class CatodoApp extends ConsumerStatefulWidget {
@@ -141,8 +231,15 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Catodo',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+      title: '喵待办',
+      theme: _buildAppTheme(),
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const [Locale('zh', 'CN')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: Consumer(
         builder: (context, ref, child) {
           final isarAsync = ref.watch(isarProvider);

@@ -53,7 +53,7 @@ class _SchedulingOptimizerScreenState
         _error = const AiCallError(
           type: AiErrorType.unauthorized,
           message: '未配置 AI',
-          detail: '请先到设置中配置 API Key 与模型',
+          detail: '请先到设置中配置 API Key 与模型'
         );
       });
       return;

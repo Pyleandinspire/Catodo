@@ -295,7 +295,7 @@ class AIService {
     if (uri == null || (!uri.hasScheme || !uri.hasAuthority)) {
       return ConnectionTestResult(
         success: false,
-        message: 'API URL 格式无效',
+        message: 'API URL 格式无效'
         detail:
             '当前 URL: $fullApiUrl\n应为完整地址，如 https://api.openai.com/v1/chat/completions',
       );
@@ -374,7 +374,7 @@ class AIService {
           return ConnectionTestResult(
             success: true,
             message: '连接正常（请求频率受限）',
-            detail: 'API Key 有效，但当前请求频率超限，请稍后再试',
+            detail: 'API Key 有效，但当前请求频率超限，请稍后再试'
           );
         case 400:
           return ConnectionTestResult(
@@ -689,7 +689,7 @@ AiCallError mapDioExceptionForTest(DioException e) {
       return AiCallError(
         type: AiErrorType.notFound,
         message: '端点不存在或模型名错误',
-        detail: detail.isNotEmpty ? detail : '请检查 API URL 与 model 名称',
+        detail: detail.isNotEmpty ? detail : '请检查 API URL 与 model 名称'
         statusCode: 404,
       );
     case 400:
