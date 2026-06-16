@@ -53,7 +53,7 @@ dependencies:
   dio: ^5.4.3+1
 
   # Local Notifications
-  flutter_local_notifications: ^21.0.0
+  flutter_local_notifications: ^22.0.1
   timezone: ^0.11.0
 
   # Repeat Rule Parser
@@ -75,7 +75,7 @@ dependencies:
   file_picker: ^8.0.3
 
   # Share (for .ics export)
-  share_plus: ^9.0.0
+  share_plus: ^12.0.0
 
   # Window Manager (desktop window configuration)
   window_manager: ^0.4.3
