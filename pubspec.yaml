@@ -30,8 +30,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_localizations:
-    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -62,7 +60,7 @@ dependencies:
   rrule: ^0.2.18
 
   # Date/Time Utils
-  intl: ^0.20.2
+  intl: ^0.19.0
 
   # Shared Preferences (WebDAV config persistence)
   shared_preferences: ^2.2.3

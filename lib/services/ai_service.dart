@@ -374,7 +374,7 @@ class AIService {
           return ConnectionTestResult(
             success: true,
             message: '连接正常（请求频率受限）',
-            detail: 'API Key 有效，但当前请求频率超限，请稍后再试'
+            detail: 'API Key 有效，但当前请求频率超限，请稍后再试',
           );
         case 400:
           return ConnectionTestResult(

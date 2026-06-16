@@ -15,39 +15,39 @@ class AdaptiveNavigation extends StatelessWidget {
 
   static const _navItems = <NavigationDestination>[
     NavigationDestination(
-      icon: Icon(Icons.checklist_rounded),
-      label: '待办',
+      icon: Icon(Icons.list),
+      label: 'to-do',
     ),
     NavigationDestination(
-      icon: Icon(Icons.dashboard_customize_rounded),
-      label: '四象限',
+      icon: Icon(Icons.grid_3x3),
+      label: 'priority',
     ),
     NavigationDestination(
-      icon: Icon(Icons.forum_rounded),
-      label: '聊天',
+      icon: Icon(Icons.message),
+      label: 'chatting',
     ),
     NavigationDestination(
-      icon: Icon(Icons.settings_rounded),
-      label: '设置',
+      icon: Icon(Icons.settings),
+      label: 'setting',
     ),
   ];
 
   static const _railDestinations = <NavigationRailDestination>[
     NavigationRailDestination(
-      icon: Icon(Icons.checklist_rounded),
-      label: Text('待办'),
+      icon: Icon(Icons.list),
+      label: Text('to-do'),
     ),
     NavigationRailDestination(
-      icon: Icon(Icons.dashboard_customize_rounded),
-      label: Text('四象限'),
+      icon: Icon(Icons.grid_3x3),
+      label: Text('priority'),
     ),
     NavigationRailDestination(
-      icon: Icon(Icons.forum_rounded),
-      label: Text('聊天'),
+      icon: Icon(Icons.message),
+      label: Text('chatting'),
     ),
     NavigationRailDestination(
-      icon: Icon(Icons.settings_rounded),
-      label: Text('设置'),
+      icon: Icon(Icons.settings),
+      label: Text('setting'),
     ),
   ];
 

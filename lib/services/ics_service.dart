@@ -45,7 +45,7 @@ class IcsService {
     final buffer = StringBuffer();
     buffer.writeln('BEGIN:VCALENDAR');
     buffer.writeln('VERSION:2.0');
-    buffer.writeln('PRODID:-//MiaoTodo//Miao Todo App//ZH-CN');
+    buffer.writeln('PRODID:-//Catodo//Catodo App//EN');
 
     for (final task in tasks) {
       buffer.writeln('BEGIN:VEVENT');
