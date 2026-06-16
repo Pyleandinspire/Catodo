@@ -67,6 +67,8 @@ class TaskItem extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = task;
     final isCompleted = t.isCompleted;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final onSurfaceVariant = Theme.of(context).colorScheme.onSurfaceVariant;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -99,7 +101,7 @@ class TaskItem extends ConsumerWidget {
                             width: 24, height: 24,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: isCompleted ? Colors.green : Colors.grey, width: 2),
+                              border: Border.all(color: isCompleted ? Colors.green : onSurfaceVariant, width: 2),
                               color: isCompleted ? Colors.green : Colors.transparent,
                             ),
                             child: isCompleted ? const Icon(AppIcons.check, size: 16, color: Colors.white) : null,
@@ -110,15 +112,15 @@ class TaskItem extends ConsumerWidget {
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
-                            Expanded(child: Text(t.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, decoration: isCompleted ? TextDecoration.lineThrough : null, color: isCompleted ? Colors.grey : Colors.black87))),
+                            Expanded(child: Text(t.title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, decoration: isCompleted ? TextDecoration.lineThrough : null, color: isCompleted ? onSurfaceVariant : onSurface))),
                             if (task.priority > 0) Padding(padding: const EdgeInsets.only(left: 6), child: _priorityChip(_getPriorityColor(task.priority), _getPriorityLabel(task.priority))),
                           ]),
                           if (t.description != null && t.description!.isNotEmpty)
-                            Padding(padding: const EdgeInsets.only(top: 4), child: Text(t.description!, style: TextStyle(fontSize: 14, color: Colors.grey, decoration: isCompleted ? TextDecoration.lineThrough : null), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                            Padding(padding: const EdgeInsets.only(top: 4), child: Text(t.description!, style: TextStyle(fontSize: 14, color: onSurfaceVariant, decoration: isCompleted ? TextDecoration.lineThrough : null), maxLines: 2, overflow: TextOverflow.ellipsis)),
                           Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [
                             if (t.dueDate != null) AppDuePill(dueDate: t.dueDate),
                             if (t.dueDate != null && t.groupName != null) const SizedBox(width: 12),
-                            if (t.groupName != null) ...[const Icon(AppIcons.folder, size: 14, color: Colors.grey), const SizedBox(width: 4), Text(t.groupName!, style: TextStyle(fontSize: 13, color: Colors.grey))],
+                            if (t.groupName != null) ...[Icon(AppIcons.folder, size: 14, color: onSurfaceVariant), const SizedBox(width: 4), Text(t.groupName!, style: TextStyle(fontSize: 13, color: onSurfaceVariant))],
                             if (t.rrule != null) const Padding(padding: EdgeInsets.only(left: 8), child: Icon(AppIcons.repeat, size: 14, color: Colors.blue)),
                           ])),
                           if (t.tags.isNotEmpty)

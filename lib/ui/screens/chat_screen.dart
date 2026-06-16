@@ -330,6 +330,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 error: (e, _) => Center(child: Text('加载消息失败: $e')),
               ),
             ),
+            _buildQuickChips(),
             _buildComposer(),
           ],
         ),
@@ -346,34 +347,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'AI 助手',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: '清空对话',
-                    onPressed: _isSending ? null : _confirmClearConversation,
-                    icon: const Icon(Icons.delete_sweep_outlined, size: 20),
-                    color: Colors.black54,
-                  ),
-                  TextButton.icon(
-                    onPressed: _showQuickActions,
-                    icon: const Icon(Icons.auto_awesome, size: 18),
-                    label: const Text('快捷操作'),
-                  ),
-                ],
+              IconButton(
+                tooltip: '清空对话',
+                onPressed: _isSending ? null : _confirmClearConversation,
+                icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ],
           ),
-          const Text(
+          Text(
             '智能任务管理 Agent',
-            style: TextStyle(fontSize: 12, color: Color(0xFF757575)),
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -449,6 +441,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildComposer() {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -456,17 +449,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: scheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(24),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _messageController,
                 onSubmitted: (_) => _sendMessage(),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: '输入消息...',
+                  hintStyle: TextStyle(color: scheme.onSurfaceVariant),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
             ),
@@ -474,23 +468,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           const SizedBox(width: 12),
           GestureDetector(
             onTap: _isSending ? null : _sendMessage,
-            child: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _isSending ? Colors.grey : Colors.black,
-                borderRadius: const BorderRadius.all(Radius.circular(24)),
-              ),
-              child: _isSending
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(AppIcons.send, color: Colors.white),
-            ),
+            child: _isSending
+                ? const SizedBox(
+                    width: 24, height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(AppIcons.send, color: scheme.onSurfaceVariant, size: 24),
           ),
         ],
       ),
@@ -817,84 +800,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  void _showQuickActions() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '快捷操作',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.bolt, color: Colors.amber),
-              title: const Text('优化时间安排'),
-              subtitle: const Text('AI 分析当前任务并给出建议'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const SchedulingOptimizerScreen(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.add_task, color: Colors.green),
-              title: const Text('创建任务'),
-              subtitle: const Text('让 AI 帮你创建新任务'),
-              onTap: () {
-                Navigator.pop(context);
-                _messageController.text = '帮我创建一个任务：';
-                _sendMessage();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.call_split, color: Colors.purple),
-              title: const Text('分解任务'),
-              subtitle: const Text('选择一个任务，让 AI 拆解为子任务'),
-              onTap: () {
-                Navigator.pop(context);
-                _showTaskPicker('分解');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.flag, color: Colors.red),
-              title: const Text('调整优先级'),
-              subtitle: const Text('选择任务并设置优先级'),
-              onTap: () {
-                Navigator.pop(context);
-                _showTaskPicker('调整优先级');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.label, color: Colors.blue),
-              title: const Text('加标签/分组'),
-              subtitle: const Text('给任务添加标签或设置分组'),
-              onTap: () {
-                Navigator.pop(context);
-                _showTaskPicker('加标签');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.check_circle, color: Colors.teal),
-              title: const Text('完成任务'),
-              subtitle: const Text('选择要完成的任务'),
-              onTap: () {
-                Navigator.pop(context);
-                _showTaskPicker('完成');
-              },
-            ),
-          ],
-        ),
+  Widget _buildQuickChips() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          ActionChip(
+            avatar: const Icon(Icons.bolt, size: 16),
+            label: const Text('优化'),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SchedulingOptimizerScreen())),
+          ),
+          const SizedBox(width: 6),
+          ActionChip(
+            avatar: const Icon(Icons.add, size: 16),
+            label: const Text('创建'),
+            onPressed: () { _messageController.text = '帮我创建一个任务：'; _sendMessage(); },
+          ),
+          const SizedBox(width: 6),
+          ActionChip(
+            avatar: const Icon(Icons.call_split, size: 16),
+            label: const Text('分解'),
+            onPressed: () => _showTaskPicker('分解'),
+          ),
+          const SizedBox(width: 6),
+          ActionChip(
+            avatar: const Icon(Icons.flag, size: 16),
+            label: const Text('优先级'),
+            onPressed: () => _showTaskPicker('调整优先级'),
+          ),
+          const SizedBox(width: 6),
+          ActionChip(
+            avatar: const Icon(Icons.label, size: 16),
+            label: const Text('标签'),
+            onPressed: () => _showTaskPicker('加标签'),
+          ),
+          const SizedBox(width: 6),
+          ActionChip(
+            avatar: const Icon(Icons.check_circle, size: 16),
+            label: const Text('完成'),
+            onPressed: () => _showTaskPicker('完成'),
+          ),
+        ]),
       ),
     );
   }

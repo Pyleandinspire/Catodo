@@ -11,6 +11,7 @@ import 'ui/screens/eisenhower_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/settings_screen.dart';
 import 'ui/components/adaptive_navigation.dart';
+import 'providers/theme_provider.dart';
 import 'ui/theme/app_theme.dart';
 import 'services/notification_service.dart';
 import 'services/secrets_migration.dart';
@@ -42,15 +43,6 @@ void main() {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 配置系统 UI 样式（Android 15+ edge-to-edge 适配）
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // 先启动 Flutter UI，避免异步初始化阻塞渲染
@@ -133,11 +125,12 @@ class _CatodoAppState extends ConsumerState<CatodoApp> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp(
       title: 'Catodo',
       theme: AppTheme.buildLight(),
       darkTheme: AppTheme.buildDark(),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: Consumer(
         builder: (context, ref, child) {
           final isarAsync = ref.watch(isarProvider);

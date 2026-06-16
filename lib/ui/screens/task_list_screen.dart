@@ -113,9 +113,10 @@ class TaskListScreen extends ConsumerWidget {
     final urgent = <Task>[];
     final thisWeek = <Task>[];
     final later = <Task>[];
+    final completed = <Task>[];
 
     for (final t in tasks) {
-      if (t.isCompleted) continue;
+      if (t.isCompleted) { completed.add(t); continue; }
       if (t.dueDate == null) { later.add(t); continue; }
       if (t.dueDate!.isBefore(today0.add(const Duration(days: 1)))) { urgent.add(t); continue; }
       if (t.dueDate!.isBefore(weekEnd)) { thisWeek.add(t); continue; }
@@ -126,6 +127,7 @@ class TaskListScreen extends ConsumerWidget {
     if (urgent.isNotEmpty) count += 1 + urgent.length;
     if (thisWeek.isNotEmpty) count += 1 + thisWeek.length;
     if (later.isNotEmpty) count += 1 + later.length;
+    if (completed.isNotEmpty) count += 1 + completed.length;
     if (count == 0) {
       return ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 8), itemCount: tasks.length, itemBuilder: (ctx, i) {
         final task = tasks[i];
@@ -142,6 +144,7 @@ class TaskListScreen extends ConsumerWidget {
           if (urgent.isNotEmpty) ['今天 / 逾期 (${urgent.length})', urgent],
           if (thisWeek.isNotEmpty) ['本周 (${thisWeek.length})', thisWeek],
           if (later.isNotEmpty) ['以后 (${later.length})', later],
+          if (completed.isNotEmpty) ['已完成 (${completed.length})', completed],
         ]) {
           final title = s[0] as String;
           final list = s[1] as List<Task>;

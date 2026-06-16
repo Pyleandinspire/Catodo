@@ -41,6 +41,13 @@ class AppTheme {
     return base.copyWith(
       textTheme: textTheme,
       primaryTextTheme: textTheme,
+      // 深色模式下确保 AppBar、Icon 的文字可见
+      appBarTheme: AppBarTheme(
+        backgroundColor: scheme.surface,
+        foregroundColor: scheme.onSurface,
+        elevation: 0,
+      ),
+      iconTheme: IconThemeData(color: scheme.onSurface),
       cardTheme: CardThemeData(
         elevation: 0, color: cardColor(),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

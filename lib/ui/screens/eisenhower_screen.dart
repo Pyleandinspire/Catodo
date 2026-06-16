@@ -52,6 +52,7 @@ class EisenhowerScreen extends ConsumerWidget {
                 ])),
               ]),
             ),
+          ),
           ],
         ),
       ),
@@ -60,7 +61,10 @@ class EisenhowerScreen extends ConsumerWidget {
 
   Widget _quadrant(BuildContext context, String title, String subtitle, List<Task> tasks, Color bg) {
     return Container(
-      color: bg,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
