@@ -295,7 +295,7 @@ class AIService {
     if (uri == null || (!uri.hasScheme || !uri.hasAuthority)) {
       return ConnectionTestResult(
         success: false,
-        message: 'API URL 格式无效'
+        message: 'API URL 格式无效',
         detail:
             '当前 URL: $fullApiUrl\n应为完整地址，如 https://api.openai.com/v1/chat/completions',
       );
@@ -689,7 +689,7 @@ AiCallError mapDioExceptionForTest(DioException e) {
       return AiCallError(
         type: AiErrorType.notFound,
         message: '端点不存在或模型名错误',
-        detail: detail.isNotEmpty ? detail : '请检查 API URL 与 model 名称'
+        detail: detail.isNotEmpty ? detail : '请检查 API URL 与 model 名称',
         statusCode: 404,
       );
     case 400:
