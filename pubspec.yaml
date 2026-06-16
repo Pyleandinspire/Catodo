@@ -44,7 +44,7 @@ dependencies:
   riverpod: ^2.5.1
 
   # Path Provider
-  path_provider: ^2.1.3
+  path_provider: ^2.1.5
 
   # UUID
   uuid: ^4.4.0
@@ -60,13 +60,13 @@ dependencies:
   rrule: ^0.2.18
 
   # Date/Time Utils
-  intl: ^0.19.0
+  intl: ^0.20.0
 
   # Shared Preferences (WebDAV config persistence)
   shared_preferences: ^2.2.3
 
   # Secure Storage (API Key / WebDAV password)
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: ^10.3.0
 
   # Cryptography (AES-GCM fallback for SecureStore)
   cryptography: ^2.7.0
@@ -78,7 +78,7 @@ dependencies:
   share_plus: ^12.0.0
 
   # Window Manager (desktop window configuration)
-  window_manager: ^0.4.3
+  window_manager: ^0.5.0
 
   # Lucide Icons (PLAN-UI-001-2)
   lucide_icons_flutter: ^3.1.14

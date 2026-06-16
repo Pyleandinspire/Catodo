@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:catodo/services/webdav_service.dart';
+import 'package:catodo/models/task.dart';
 
 void main() {
   group('WebDAVService URL 构建测试', () {
@@ -122,6 +123,30 @@ void main() {
       expect(result.status, SyncStatus.failed);
       expect(result.error, '网络错误');
       expect(result.uploadedCount, 0);
+    });
+  });
+
+  group('resolveConflictTest 软删除优先', () {
+    test('本地已删远程未删 → 返回已删版本', () {
+      final service = WebDAVService(WebDAVConfig());
+      final local = Task(title: 'A', isCompleted: false)..id = 1..isDeleted = true;
+      final remote = Task(title: 'A', isCompleted: false)..id = 1..isDeleted = false;
+      final winner = service.resolveConflictTest(local, remote, SyncMode.autoMerge);
+      expect(winner.isDeleted, true);
+    });
+    test('远程已删本地未删 → 返回已删版本', () {
+      final service = WebDAVService(WebDAVConfig());
+      final local = Task(title: 'A')..id = 1..isDeleted = false;
+      final remote = Task(title: 'A')..id = 1..isDeleted = true;
+      final winner = service.resolveConflictTest(local, remote, SyncMode.autoMerge);
+      expect(winner.isDeleted, true);
+    });
+    test('双方未删 autoMerge → updatedAt 新者胜', () {
+      final service = WebDAVService(WebDAVConfig());
+      final local = Task(title: 'Local')..id = 1..updatedAt = DateTime(2026, 6, 16);
+      final remote = Task(title: 'Remote')..id = 1..updatedAt = DateTime(2026, 6, 15);
+      final winner = service.resolveConflictTest(local, remote, SyncMode.autoMerge);
+      expect(winner.title, 'Local');
     });
   });
 }
