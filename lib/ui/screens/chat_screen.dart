@@ -42,7 +42,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   bool _isSending = false;
 
-  static const String _welcomeText =
+  static const String _welcomeBase =
       '你好！我是 AI 助手，可以直接帮你管理任务：\n'
       '1. 创建任务 - "帮我创建一个高优先级任务：完成报告"\n'
       '2. 分解任务 - "分解任务「学习 Flutter」"\n'
@@ -50,6 +50,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       '4. 加标签/分组 - "给任务加标签「紧急」"\n'
       '5. 完成/删除 - "完成任务「买牛奶」"\n'
       '6. 自由对话 - 直接输入你的问题';
+
+  String _buildWelcome() {
+    final tasks = ref.read(activeTasksProvider).valueOrNull ?? const [];
+    final active = tasks.where((t) => !t.isCompleted).length;
+    final completed = tasks.length - active;
+    final now = DateTime.now();
+    final todayEnd = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final todayCount = tasks.where((t) => !t.isCompleted && t.dueDate != null && t.dueDate!.isBefore(todayEnd)).length;
+    if (active == 0 && completed == 0) return _welcomeBase;
+    final buf = StringBuffer('你好！');
+    if (active > 0) buf.write(' 你今天有 $active 个任务');
+    if (todayCount > 0) buf.write('，其中 $todayCount 个今天截止');
+    if (completed > 0) buf.write('。已完成 $completed 个');
+    buf.writeln('。\n\n我可以帮你创建、分解、调整优先级、加标签等，直接跟我说就好。');
+    return buf.toString();
+  }
 
   static const String _pendingHint = '未确认的操作仅在本次会话有效，关闭或切走即过期。';
 
@@ -106,16 +122,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await _appendDb(role: 'user', content: text);
     _scrollToBottom();
 
-    // 取 AIService（FutureProvider，已配置时会立刻同步取到值）
-    final aiAsync = ref.read(aiServiceProvider);
-    final ai = aiAsync.valueOrNull;
+    // 等待 AI Service 就绪：Provider 可能在启动后首次加载（读 SecureStore/SP）
+    final ai = await ref.read(aiServiceProvider.future)
+        .timeout(const Duration(seconds: 3), onTimeout: () => null);
     if (ai == null) {
-      // 加载中或未配置：以 UI 提示告知，不入模型上下文
+      // 超时 3s 或真的未配置 → 提示用户
       await _appendDb(
         role: 'assistant',
-        content: aiAsync.isLoading
-            ? '正在加载 AI 配置，请稍候再发送…'
-            : '请先在设置中配置 AI 助手的 API 参数。',
+        content: '请先在设置中配置 AI 助手的 API 参数。',
         visibleToModel: false,
       );
       if (mounted) setState(() => _isSending = false);
@@ -394,7 +408,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final histLen = isEmpty ? 1 : shown.length;
         if (index < histLen) {
           if (isEmpty) {
-            return _buildBubble(isUser: false, text: _welcomeText);
+            return _buildBubble(isUser: false, text: _buildWelcome());
           }
           final m = shown[index];
           return _buildBubble(

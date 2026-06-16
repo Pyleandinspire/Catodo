@@ -86,7 +86,7 @@ class EisenhowerScreen extends ConsumerWidget {
                   itemBuilder: (_, i) {
                     final t = tasks[i];
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.only(bottom: 4),
                       child: InkWell(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TaskFormScreen(task: t))),
                         borderRadius: BorderRadius.circular(10),
