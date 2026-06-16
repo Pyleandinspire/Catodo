@@ -36,7 +36,7 @@ class LLMProviderRegistry {
     ),
     LLMProvider(
       id: 'doubao',
-      name: '豆包 (ByteDance)',
+      name: '豆包 ByteDance',
       apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
       defaultModel: 'doubao-pro-32k',
       description: '字节跳动豆包大模型，支持超长上下文',
@@ -52,7 +52,7 @@ class LLMProviderRegistry {
     ),
     LLMProvider(
       id: 'qwen',
-      name: '通义千问 (Qwen)',
+      name: '通义千问 Qwen',
       apiUrl:
           'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
       defaultModel: 'qwen-turbo',
@@ -61,7 +61,7 @@ class LLMProviderRegistry {
     ),
     LLMProvider(
       id: 'moonshot',
-      name: 'Moonshot (Kimi)',
+      name: 'Moonshot Kimi',
       apiUrl: 'https://api.moonshot.cn/v1/chat/completions',
       defaultModel: 'moonshot-v1-8k',
       description: '月之暗面 Kimi，超长上下文',

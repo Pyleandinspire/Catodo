@@ -4,24 +4,43 @@ import '../../providers/task_providers.dart';
 import '../../models/task.dart';
 import 'task_form_screen.dart';
 
+class _QuadrantData {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final List<Task> tasks;
+  final Color color;
+  final Color bgColor;
+
+  const _QuadrantData({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.tasks,
+    required this.color,
+    required this.bgColor,
+  });
+}
+
 class EisenhowerScreen extends ConsumerWidget {
   const EisenhowerScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tasks = ref.watch(filteredTasksProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
-    // 按艾森豪威尔矩阵分组
-    List<Task> urgentImportant = [];
-    List<Task> notUrgentImportant = [];
-    List<Task> urgentNotImportant = [];
-    List<Task> notUrgentNotImportant = [];
+    final urgentImportant = <Task>[];
+    final notUrgentImportant = <Task>[];
+    final urgentNotImportant = <Task>[];
+    final notUrgentNotImportant = <Task>[];
 
     for (final task in tasks) {
       if (task.isCompleted) continue;
-      
-      bool isUrgent = task.dueDate != null && task.dueDate!.isBefore(DateTime.now().add(const Duration(days: 2)));
-      bool isImportant = task.priority >= 2;
+
+      final isUrgent = task.dueDate != null &&
+          task.dueDate!.isBefore(DateTime.now().add(const Duration(days: 2)));
+      final isImportant = task.priority >= 2;
 
       if (isUrgent && isImportant) {
         urgentImportant.add(task);
@@ -34,224 +53,137 @@ class EisenhowerScreen extends ConsumerWidget {
       }
     }
 
-    Widget _buildQuadrant({
-      required String title,
-      required String subtitle,
-      required List<Task> tasks,
-      required Color color,
-      required Color bgColor,
-    }) {
-      return Expanded(
-        child: Container(
-          margin: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: tasks.isEmpty
-                    ? Center(
-                        child: Text(
-                          '暂无任务',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        itemCount: tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = tasks[index];
-                          return Card(
-                            elevation: 1,
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            child: InkWell(
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => TaskFormScreen(task: task),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      task.title,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    if (task.dueDate != null)
-                                      Text(
-                                        '截止: ${task.dueDate!.month}/${task.dueDate!.day}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[500],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              if (tasks.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${tasks.length} 个任务',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: color,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    }
+    final quadrants = [
+      _QuadrantData(
+        title: '紧急且重要',
+        subtitle: '立即处理',
+        icon: Icons.priority_high_rounded,
+        tasks: urgentImportant,
+        color: const Color(0xFFE11D48),
+        bgColor: const Color(0xFFFFF1F2),
+      ),
+      _QuadrantData(
+        title: '不紧急但重要',
+        subtitle: '规划时间',
+        icon: Icons.event_available_rounded,
+        tasks: notUrgentImportant,
+        color: const Color(0xFFD97706),
+        bgColor: const Color(0xFFFFF7ED),
+      ),
+      _QuadrantData(
+        title: '紧急但不重要',
+        subtitle: '授权或快速处理',
+        icon: Icons.flash_on_rounded,
+        tasks: urgentNotImportant,
+        color: const Color(0xFF2563EB),
+        bgColor: const Color(0xFFEFF6FF),
+      ),
+      _QuadrantData(
+        title: '不紧急不重要',
+        subtitle: '尽量避免',
+        icon: Icons.spa_rounded,
+        tasks: notUrgentNotImportant,
+        color: const Color(0xFF64748B),
+        bgColor: const Color(0xFFF8FAFC),
+      ),
+    ];
 
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // 头部区域
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '艾森豪威尔矩阵',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorScheme.shadow.withValues(alpha: 0.05),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
-                  Text(
-                    '按紧急和重要性分类',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '四象限',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.onSurface,
+                          ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      '按紧急和重要性安排任务',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
               ),
             ),
-
-            // 矩阵网格
             Expanded(
               child: tasks.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
+                        children: [
                           Icon(
-                            Icons.grid_3x3,
-                            size: 64,
-                            color: Color(0xFFE0E0E0),
+                            Icons.dashboard_customize_rounded,
+                            size: 70,
+                            color: colorScheme.primary.withValues(alpha: 0.22),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Text(
                             '暂无任务',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Color(0xFF9E9E9E),
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '添加任务后会自动出现在对应象限',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                           ),
                         ],
                       ),
                     )
-                  : Column(
-                      children: [
-                        // 第一行：重要
-                        Expanded(
-                          child: Row(
-                            children: [
-                              _buildQuadrant(
-                                title: '紧急且重要',
-                                subtitle: '立即处理',
-                                tasks: urgentImportant,
-                                color: Colors.red,
-                                bgColor: Colors.red[50]!,
-                              ),
-                              _buildQuadrant(
-                                title: '不紧急但重要',
-                                subtitle: '规划时间',
-                                tasks: notUrgentImportant,
-                                color: Colors.orange,
-                                bgColor: Colors.orange[50]!,
-                              ),
-                            ],
-                          ),
-                        ),
-                        // 第二行：不重要
-                        Expanded(
-                          child: Row(
-                            children: [
-                              _buildQuadrant(
-                                title: '紧急但不重要',
-                                subtitle: '授权他人',
-                                tasks: urgentNotImportant,
-                                color: Colors.blue,
-                                bgColor: Colors.blue[50]!,
-                              ),
-                              _buildQuadrant(
-                                title: '不紧急不重要',
-                                subtitle: '尽量避免',
-                                tasks: notUrgentNotImportant,
-                                color: Colors.grey,
-                                bgColor: Colors.grey[100]!,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final useGrid = constraints.maxWidth >= 700;
+                        if (useGrid) {
+                          return GridView.count(
+                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                            crossAxisCount: 2,
+                            childAspectRatio: 1.35,
+                            children: quadrants
+                                .map((q) => _buildQuadrant(context, q))
+                                .toList(),
+                          );
+                        }
+
+                        return ListView(
+                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                          children: quadrants
+                              .map(
+                                (q) => SizedBox(
+                                  height: 320,
+                                  child: _buildQuadrant(context, q),
+                                ),
+                              )
+                              .toList(),
+                        );
+                      },
                     ),
             ),
           ],
@@ -262,10 +194,154 @@ class EisenhowerScreen extends ConsumerWidget {
           context,
           MaterialPageRoute(builder: (context) => const TaskFormScreen()),
         ),
-        backgroundColor: Colors.blue,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, size: 28),
+        child: const Icon(Icons.add_rounded, size: 28),
+      ),
+    );
+  }
+
+  Widget _buildQuadrant(BuildContext context, _QuadrantData quadrant) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: quadrant.bgColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: quadrant.color.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: quadrant.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(quadrant.icon, color: quadrant.color, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        quadrant.title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: quadrant.color,
+                            ),
+                      ),
+                      Text(
+                        quadrant.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: quadrant.color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${quadrant.tasks.length}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: quadrant.color,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: quadrant.tasks.isEmpty
+                ? Center(
+                    child: Text(
+                      '暂无任务',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                    itemCount: quadrant.tasks.length,
+                    itemBuilder: (context, index) {
+                      final task = quadrant.tasks[index];
+                      return Card(
+                        elevation: 0,
+                        color: colorScheme.surface,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(
+                            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        child: InkWell(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => TaskFormScreen(task: task),
+                            ),
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  task.title,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: colorScheme.onSurface,
+                                      ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (task.dueDate != null) ...[
+                                  const SizedBox(height: 5),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_today_rounded,
+                                        size: 13,
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '截止 ${task.dueDate!.month}/${task.dueDate!.day}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: colorScheme.onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

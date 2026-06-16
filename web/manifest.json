@@ -1,11 +1,11 @@
 {
-    "name": "Catodo",
-    "short_name": "Catodo",
+    "name": "喵待办",
+    "short_name": "喵待办",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Catodo - Smart Task Management",
+    "description": "喵待办 - 智能任务管理",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

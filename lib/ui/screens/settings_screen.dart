@@ -9,93 +9,114 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       body: SafeArea(
-        child: Column(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
-            // 头部区域
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: colorScheme.shadow.withValues(alpha: 0.05),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Row(
                 children: [
-                  const Text(
-                    '设置',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(
+                      Icons.tune_rounded,
+                      color: colorScheme.primary,
+                      size: 28,
                     ),
                   ),
-                  Text(
-                    '管理你的应用配置',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '设置',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: colorScheme.onSurface,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '管理同步、AI 和数据备份',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-
-            // 设置选项列表
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  // AI 设置
-                  _buildCard(
-                    icon: Icons.smart_toy,
-                    iconColor: Colors.purple,
-                    iconBgColor: const Color(0xFFF3E5F5),
-                    title: 'AI 助手',
-                    subtitle: '智能任务分解与建议',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AISettingsScreen(),
-                      ),
-                    ),
-                  ),
-
-                  // 数据管理
-                  _buildCard(
-                    icon: Icons.data_saver_on,
-                    iconColor: Colors.blue,
-                    iconBgColor: const Color(0xFFE3F2FD),
-                    title: '数据管理',
-                    subtitle: '导入导出与同步',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const DataManagementScreen(),
-                      ),
-                    ),
-                  ),
-
-                  // WebDAV 同步
-                  _buildCard(
-                    icon: Icons.sync,
-                    iconColor: Colors.green,
-                    iconBgColor: const Color(0xFFE8F5E9),
-                    title: 'WebDAV 同步',
-                    subtitle: '跨设备数据同步',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const WebDAVSettingsScreen(),
-                      ),
-                    ),
-                  ),
-
-                  // 关于
-                  _buildCard(
-                    icon: Icons.info,
-                    iconColor: const Color(0xFF757575),
-                    iconBgColor: const Color(0xFFF5F5F5),
-                    title: '关于',
-                    subtitle: '版本 1.0.0',
-                    onTap: null,
-                  ),
-                ],
+            const SizedBox(height: 18),
+            _buildCard(
+              context: context,
+              icon: Icons.smart_toy_rounded,
+              iconColor: Colors.purple,
+              iconBgColor: const Color(0xFFF3E5F5),
+              title: 'AI 助手',
+              subtitle: '配置模型、API Key 与智能任务能力',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AISettingsScreen()),
               ),
+            ),
+            _buildCard(
+              context: context,
+              icon: Icons.inventory_2_rounded,
+              iconColor: Colors.blue,
+              iconBgColor: const Color(0xFFE3F2FD),
+              title: '数据管理',
+              subtitle: '导入导出任务，备份完整配置',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DataManagementScreen()),
+              ),
+            ),
+            _buildCard(
+              context: context,
+              icon: Icons.sync_rounded,
+              iconColor: Colors.green,
+              iconBgColor: const Color(0xFFE8F5E9),
+              title: 'WebDAV 同步',
+              subtitle: '跨设备同步任务数据',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WebDAVSettingsScreen()),
+              ),
+            ),
+            _buildCard(
+              context: context,
+              icon: Icons.info_outline_rounded,
+              iconColor: colorScheme.onSurfaceVariant,
+              iconBgColor: colorScheme.surfaceContainerHighest,
+              title: '关于',
+              subtitle: '版本 1.0.0',
+              onTap: null,
             ),
           ],
         ),
@@ -104,6 +125,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _buildCard({
+    required BuildContext context,
     required IconData icon,
     required Color iconColor,
     required Color iconBgColor,
@@ -111,50 +133,58 @@ class SettingsScreen extends ConsumerWidget {
     required String subtitle,
     VoidCallback? onTap,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.65)),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   color: iconBgColor,
-                  borderRadius: const BorderRadius.all(Radius.circular(12)),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: iconColor),
+                child: Icon(icon, color: iconColor, size: 26),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.onSurface,
+                          ),
                     ),
+                    const SizedBox(height: 3),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF757575),
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                     ),
                   ],
                 ),
               ),
               if (onTap != null)
-                const Icon(Icons.arrow_forward_ios, color: Color(0xFFBDBDBD)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: colorScheme.onSurfaceVariant,
+                ),
             ],
           ),
         ),
