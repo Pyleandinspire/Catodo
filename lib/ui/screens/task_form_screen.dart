@@ -158,9 +158,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     final ai = ref.read(aiServiceProvider).valueOrNull;
     if (ai == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI 未配置；请到设置页配置后重试')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('AI 未配置；请到设置页配置后重试')));
       }
       return;
     }
@@ -173,9 +173,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI 解析失败：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('AI 解析失败：$e')));
       }
     } finally {
       if (mounted) setState(() => _isAiParsing = false);
@@ -194,7 +194,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       final current = _descriptionController.text;
       final insert = current.isEmpty ? path : '$current\n$path';
       _descriptionController.text = insert;
-      _descriptionController.selection = TextSelection.collapsed(offset: insert.length);
+      _descriptionController.selection = TextSelection.collapsed(
+        offset: insert.length,
+      );
     } catch (e) {
       debugPrint('_pickImage failed: $e');
     }
@@ -203,7 +205,10 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   List<String> _extractImagePaths() {
     final text = _descriptionController.text;
     if (text.isEmpty) return const [];
-    final regex = RegExp(r'(?:^|\n)(\/[^\n]+\.(?:png|jpg|jpeg|gif|webp|bmp))', multiLine: true);
+    final regex = RegExp(
+      r'(?:^|\n)(\/[^\n]+\.(?:png|jpg|jpeg|gif|webp|bmp))',
+      multiLine: true,
+    );
     return regex.allMatches(text).map((m) => m.group(1)!).toList();
   }
 
@@ -215,18 +220,31 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: paths.map((p) => GestureDetector(
-          onTap: () => _openImageFullscreen(p),
-          child: Container(
-            width: 80, height: 80,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey.withAlpha(60)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Image.file(File(p), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 32, color: Colors.grey)),
-          ),
-        )).toList(),
+        children: paths
+            .map(
+              (p) => GestureDetector(
+                onTap: () => _openImageFullscreen(p),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.withAlpha(60)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.file(
+                    File(p),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.broken_image,
+                      size: 32,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -996,14 +1014,18 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   String _fmtDateTimeShort(DateTime d) {
     String two(int v) => v.toString().padLeft(2, '0');
     final today = DateTime.now();
-    final isSameDay = d.year == today.year && d.month == today.month && d.day == today.day;
+    final isSameDay =
+        d.year == today.year && d.month == today.month && d.day == today.day;
     final tomorrow = today.add(const Duration(days: 1));
-    final isTomorrow = d.year == tomorrow.year && d.month == tomorrow.month && d.day == tomorrow.day;
+    final isTomorrow =
+        d.year == tomorrow.year &&
+        d.month == tomorrow.month &&
+        d.day == tomorrow.day;
     final dateLabel = isSameDay
         ? '今天'
         : isTomorrow
-            ? '明天'
-            : '${d.month}/${d.day}';
+        ? '明天'
+        : '${d.month}/${d.day}';
     return '$dateLabel ${two(d.hour)}:${two(d.minute)}';
   }
 
@@ -1075,12 +1097,19 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.auto_awesome, size: 18, color: Color(0xFF6A1B9A)),
+                const Icon(
+                  Icons.auto_awesome,
+                  size: 18,
+                  color: Color(0xFF6A1B9A),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'AI 解析：${p.title}',
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF4A148C)),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF4A148C),
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -1092,7 +1121,10 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
               ],
             ),
             const SizedBox(height: 4),
-            Text(summary, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            Text(
+              summary,
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(

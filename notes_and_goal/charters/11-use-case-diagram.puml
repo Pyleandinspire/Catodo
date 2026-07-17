@@ -1,0 +1,132 @@
+@startuml
+skinparam handwritten false
+skinparam theme plain
+skinparam packageStyle rect
+skinparam defaultFontName "SimSun"
+
+title 智能待办/笔记应用 - catodo 用例图
+
+left to right direction
+
+' --- 参与者定义 ---
+actor "用户" as User
+actor "通知系统" as NoticeSys
+actor "AI 大模型" as LLM
+actor "WebDAV 服务器" as WebDAVSec
+
+' --- 系统边界 ---
+rectangle "catodo" {
+
+    ' --- 任务管理模块 ---
+    rectangle "任务管理" {
+        usecase "撤销完成\nuncomplete_task" as UC_uncomplete
+        usecase "编辑任务\nupdate_task" as UC_update
+        usecase "创建任务\ncreate_task" as UC_create
+        usecase "优先级\nset_priority" as UC_priority
+        usecase "标签管理\nadd/remove_tag" as UC_tag
+        usecase "分解任务\ndecompose_task" as UC_decompose
+        usecase "分组管理\nset_group" as UC_group
+        usecase "重复规则\nset/clear_repeat" as UC_repeat
+        usecase "提醒管理\nadd/remove/clear" as UC_remind
+        usecase "删除任务\ndelete_task" as UC_delete
+        usecase "完成任务\ncomplete_task" as UC_complete
+    }
+
+    ' --- 任务查看模块 ---
+    rectangle "任务查看" {
+        usecase "艾森豪威尔\n四象限矩阵" as UC_matrix
+        usecase "待办列表\n筛选/分段" as UC_filter
+        usecase "按天视图\nfocusToday/hideOverdue" as UC_day_view
+    }
+
+    ' --- AI 功能模块 ---
+    rectangle "AI 功能" {
+        usecase "批量操作\nbulk_update" as UC_bulk
+        usecase "查询任务\nquery_tasks" as UC_query
+        usecase "时间优化\nSchedulingOptimizer" as UC_optimize
+        usecase "情绪支持\n逾期爱心按钮" as UC_emotion
+        usecase "NLP 智能解析\ntask_form 输入预览" as UC_nlp
+        usecase "AI 对话\n意图识别+执行" as UC_chat
+    }
+
+    ' --- 数据管理模块 ---
+    rectangle "数据管理" {
+        usecase "导出 .ics" as UC_exp_ics
+        usecase "导入 .ics" as UC_imp_ics
+        usecase "导出 .catodo\n含/不含敏感字段" as UC_exp_catodo
+        usecase "导入 .catodo" as UC_imp_catodo
+        usecase "WebDAV 同步\n三种冲突策略" as UC_webdav_sync
+    }
+
+    ' --- 设置模块 ---
+    rectangle "设置" {
+        usecase "WebDAV 服务器\nURL+认证配置" as UC_cfg_webdav
+        usecase "AI 提供商\n7预设+自定义" as UC_cfg_ai
+        usecase "配置 API Key\n与接口鉴权" as UC_cfg_apikey
+        usecase "主题模式\nlight/dark/system" as UC_cfg_theme
+    }
+}
+
+' --- 用户主动触发关联 ---
+User --> UC_uncomplete
+User --> UC_update
+User --> UC_create
+User --> UC_priority
+User --> UC_tag
+User --> UC_decompose
+User --> UC_group
+User --> UC_repeat
+User --> UC_remind
+User --> UC_delete
+User --> UC_complete
+
+User --> UC_matrix
+User --> UC_filter
+User --> UC_day_view
+
+User --> UC_optimize
+User --> UC_emotion
+User --> UC_chat
+
+User --> UC_exp_ics
+User --> UC_imp_ics
+User --> UC_exp_catodo
+User --> UC_imp_catodo
+User --> UC_webdav_sync
+
+User --> UC_cfg_webdav
+User --> UC_cfg_ai
+User --> UC_cfg_apikey
+User --> UC_cfg_theme
+
+' --- 用例间关系 ---
+UC_nlp .> UC_create : <<extend>>
+UC_nlp .> UC_update : <<extend>>
+UC_chat .> UC_bulk : <<include>>
+UC_chat .> UC_query : <<include>>
+
+' --- 外部系统连接 ---
+' 1. 通知系统
+UC_repeat --> NoticeSys
+UC_remind --> NoticeSys
+UC_delete --> NoticeSys
+UC_complete --> NoticeSys
+
+' 2. AI 大模型端
+UC_bulk --> LLM
+UC_query --> LLM
+UC_optimize --> LLM
+UC_emotion --> LLM
+UC_nlp --> LLM
+UC_chat --> LLM
+UC_cfg_apikey --> LLM
+
+' 3. WebDAV 服务器端
+UC_exp_ics --> WebDAVSec
+UC_imp_ics --> WebDAVSec
+UC_exp_catodo --> WebDAVSec
+UC_imp_catodo --> WebDAVSec
+UC_webdav_sync --> WebDAVSec
+UC_cfg_webdav --> WebDAVSec
+
+@endum
